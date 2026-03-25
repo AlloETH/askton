@@ -5,3 +5,4 @@
 *.d.ts
 
 !eslint.config.mjs
+.claude
