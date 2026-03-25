@@ -43,12 +43,12 @@ export class DnsLookupSkill implements SkillHandler {
         this.http.get(`https://tonapi.io/v2/dns/${fullDomain}`, { headers }),
       );
 
-      // Domain exists and is owned
-      if (data.wallet?.address) {
+      // Domain exists and is owned (has wallet resolution or NFT item)
+      if (data.wallet?.address || data.item?.address) {
         return {
           domain: fullDomain,
           status: 'owned',
-          walletAddress: data.wallet.address,
+          walletAddress: data.wallet?.address || null,
           nftAddress: data.item?.address || null,
           expiresAt: data.expiring_at
             ? new Date(data.expiring_at * 1000).toISOString()

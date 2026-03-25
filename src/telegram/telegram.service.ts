@@ -12,6 +12,8 @@ interface Entity {
   length: number;
 }
 
+const STREAM_EDIT_INTERVAL_MS = 1500;
+
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
@@ -73,16 +75,60 @@ export class TelegramService {
 
     try {
       await ctx.telegram.sendChatAction(msg.chat.id, 'typing');
-      const reply = await this.agentService.run(query, groupId, username);
-      const replyOpts = {
+
+      // Send placeholder message for streaming edits
+      const placeholder = await ctx.reply('...', {
         reply_parameters: { message_id: msg.message_id },
+      });
+
+      let lastEditText = '';
+      let lastEditTime = 0;
+      let editPending = false;
+
+      const scheduleEdit = (text: string) => {
+        const now = Date.now();
+        if (now - lastEditTime < STREAM_EDIT_INTERVAL_MS) {
+          editPending = true;
+          return;
+        }
+        editPending = false;
+        lastEditText = text;
+        lastEditTime = now;
+        ctx.telegram
+          .editMessageText(msg.chat.id, placeholder.message_id, undefined, text)
+          .catch(() => {
+            // Ignore edit errors (e.g. message not modified)
+          });
       };
 
-      // Try Markdown first, fall back to plain text if Telegram can't parse it
-      try {
-        await ctx.reply(reply, { ...replyOpts, parse_mode: 'Markdown' });
-      } catch {
-        await ctx.reply(reply, replyOpts);
+      const reply = await this.agentService.run(
+        query,
+        groupId,
+        username,
+        (accumulated) => scheduleEdit(accumulated),
+      );
+
+      // Final edit with complete text + Markdown
+      if (reply !== lastEditText || editPending) {
+        try {
+          await ctx.telegram.editMessageText(
+            msg.chat.id,
+            placeholder.message_id,
+            undefined,
+            reply,
+            { parse_mode: 'Markdown' },
+          );
+        } catch {
+          // Fall back to plain text if Markdown fails
+          await ctx.telegram
+            .editMessageText(
+              msg.chat.id,
+              placeholder.message_id,
+              undefined,
+              reply,
+            )
+            .catch(() => {});
+        }
       }
     } catch (err) {
       this.logger.error('Error handling message', err);
