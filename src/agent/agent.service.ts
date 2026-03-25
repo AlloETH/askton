@@ -121,7 +121,15 @@ export class AgentService {
     const { data } = await firstValueFrom(
       this.http.post<Record<string, unknown>>(
         url,
-        JSON.stringify({ messages, web_access: false }),
+        {
+          messages,
+          system_prompt: '',
+          temperature: 0.9,
+          top_k: 5,
+          top_p: 0.9,
+          max_tokens: 512,
+          web_access: false,
+        },
         {
           headers: {
             'x-rapidapi-key': this.config.get<string>('rapidApiKey'),
