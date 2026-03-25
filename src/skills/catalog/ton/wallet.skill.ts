@@ -38,7 +38,10 @@ export class WalletSkill implements SkillHandler {
     let nfts = [];
     try {
       const { data: nftData } = await firstValueFrom(
-        this.http.get(`https://tonapi.io/v2/accounts/${resolved}/nfts?limit=20`, { headers }),
+        this.http.get(
+          `https://tonapi.io/v2/accounts/${resolved}/nfts?limit=20`,
+          { headers },
+        ),
       );
       nfts = nftData.nft_items || [];
     } catch {
@@ -46,7 +49,11 @@ export class WalletSkill implements SkillHandler {
     }
 
     const gifts = nfts
-      .filter((n: any) => n.collection?.name?.toLowerCase().includes('gift') || n.metadata?.name)
+      .filter(
+        (n: any) =>
+          n.collection?.name?.toLowerCase().includes('gift') ||
+          n.metadata?.name,
+      )
       .map((n: any) => ({
         name: n.metadata?.name || 'Unknown',
         collection: n.collection?.name || 'Unknown',

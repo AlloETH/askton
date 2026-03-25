@@ -7,7 +7,11 @@ import { Skill, SkillHandler } from '../../skill.decorator';
   name: 'get_balance_change',
   description:
     'get TON balance change for a wallet over a time period — shows how much was gained or lost',
-  example: { address: 'UQ...', start_date: '2025-01-01', end_date: '2025-03-01' },
+  example: {
+    address: 'UQ...',
+    start_date: '2025-01-01',
+    end_date: '2025-03-01',
+  },
 })
 export class BalanceChangeSkill implements SkillHandler {
   private apiKey: string;

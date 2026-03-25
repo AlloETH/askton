@@ -7,7 +7,12 @@ import { Skill, SkillHandler } from '../../skill.decorator';
   name: 'get_gifts_aggregator',
   description:
     'search and filter Telegram gifts across all marketplaces — filter by name, price range, rarity, provider (getgems/mrkt/portals/tonnel)',
-  example: { gift_name: 'Homemade Cake', min_price: 1, max_price: 100, provider: 'getgems' },
+  example: {
+    gift_name: 'Homemade Cake',
+    min_price: 1,
+    max_price: 100,
+    provider: 'getgems',
+  },
 })
 export class GiftAggregatorSkill implements SkillHandler {
   private apiKey: string;
@@ -33,11 +38,10 @@ export class GiftAggregatorSkill implements SkillHandler {
     if (input.limit) body.limit = Math.min(input.limit, 50);
 
     const { data } = await firstValueFrom(
-      this.http.post(
-        `${this.baseUrl}/api/aggregator`,
-        body,
-        { headers, timeout: 15000 },
-      ),
+      this.http.post(`${this.baseUrl}/api/aggregator`, body, {
+        headers,
+        timeout: 15000,
+      }),
     );
 
     if (!data || data.status === 'error') {

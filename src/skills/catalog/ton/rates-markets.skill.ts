@@ -24,10 +24,9 @@ export class RatesMarketsSkill implements SkillHandler {
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
     const { data } = await firstValueFrom(
-      this.http.get(
-        `https://tonapi.io/v2/rates/markets?token=${token}`,
-        { headers },
-      ),
+      this.http.get(`https://tonapi.io/v2/rates/markets?token=${token}`, {
+        headers,
+      }),
     );
 
     const markets = (data.markets || []).map((m: any) => ({

@@ -31,11 +31,10 @@ export class GiftMarketActionsSkill implements SkillHandler {
     if (input.provider) body.provider = input.provider;
 
     const { data } = await firstValueFrom(
-      this.http.post(
-        `${this.baseUrl}/api/actions/markets`,
-        body,
-        { headers, timeout: 15000 },
-      ),
+      this.http.post(`${this.baseUrl}/api/actions/markets`, body, {
+        headers,
+        timeout: 15000,
+      }),
     );
 
     if (!data || data.status === 'error') {

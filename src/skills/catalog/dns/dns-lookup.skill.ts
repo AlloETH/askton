@@ -29,7 +29,10 @@ export class DnsLookupSkill implements SkillHandler {
     }
 
     if (!/^[a-z0-9-]+$/.test(domain)) {
-      return { error: 'Domain can only contain lowercase letters, numbers, and hyphens' };
+      return {
+        error:
+          'Domain can only contain lowercase letters, numbers, and hyphens',
+      };
     }
 
     const fullDomain = domain + '.ton';

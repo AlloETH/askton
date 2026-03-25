@@ -22,7 +22,8 @@ export class DexQuoteSkill implements SkillHandler {
       return { error: 'Missing "to" token address' };
     }
 
-    const fromAddr = fromToken.toUpperCase() === 'TON' ? TON_ADDRESS : fromToken;
+    const fromAddr =
+      fromToken.toUpperCase() === 'TON' ? TON_ADDRESS : fromToken;
     const toAddr = toToken.toUpperCase() === 'TON' ? TON_ADDRESS : toToken;
 
     // Determine decimals (TON = 9, jettons default 9 too)

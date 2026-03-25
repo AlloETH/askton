@@ -35,10 +35,9 @@ export class AccountSubscriptionsSkill implements SkillHandler {
     }
 
     const { data } = await firstValueFrom(
-      this.http.get(
-        `https://tonapi.io/v2/accounts/${resolved}/subscriptions`,
-        { headers },
-      ),
+      this.http.get(`https://tonapi.io/v2/accounts/${resolved}/subscriptions`, {
+        headers,
+      }),
     );
 
     const subscriptions = (data.subscriptions || []).map((s: any) => ({

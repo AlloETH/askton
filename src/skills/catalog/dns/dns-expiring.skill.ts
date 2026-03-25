@@ -26,10 +26,9 @@ export class DnsExpiringSkill implements SkillHandler {
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
     const { data } = await firstValueFrom(
-      this.http.get(
-        `https://tonapi.io/v2/accounts/${address}/dns/expiring`,
-        { headers },
-      ),
+      this.http.get(`https://tonapi.io/v2/accounts/${address}/dns/expiring`, {
+        headers,
+      }),
     );
 
     const domains = (data.items || []).map((d: any) => ({

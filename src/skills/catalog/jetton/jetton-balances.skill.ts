@@ -59,9 +59,7 @@ export class JettonBalancesSkill implements SkillHandler {
           address: meta.address || null,
           verification: meta.verification || 'unknown',
           priceUsd: b.price?.prices?.USD || null,
-          valueUsd: b.price?.prices?.USD
-            ? balance * b.price.prices.USD
-            : null,
+          valueUsd: b.price?.prices?.USD ? balance * b.price.prices.USD : null,
         };
       })
       .sort((a: any, b: any) => (b.valueUsd || 0) - (a.valueUsd || 0));

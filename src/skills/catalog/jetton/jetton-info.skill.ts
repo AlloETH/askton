@@ -33,7 +33,8 @@ export class JettonInfoSkill implements SkillHandler {
     const divisor = BigInt(10) ** BigInt(decimals);
     const supplyWhole = rawSupply / divisor;
     const supplyFrac = rawSupply % divisor;
-    const totalSupply = Number(supplyWhole) + Number(supplyFrac) / Number(divisor);
+    const totalSupply =
+      Number(supplyWhole) + Number(supplyFrac) / Number(divisor);
 
     return {
       address,

@@ -43,10 +43,7 @@ export class TonChartSkill implements SkillHandler {
     const endTime = Math.floor(Date.now() / 1000);
     const startTime = endTime - config.seconds;
 
-    const tokenParam =
-      token.toLowerCase() === 'ton'
-        ? 'ton'
-        : token;
+    const tokenParam = token.toLowerCase() === 'ton' ? 'ton' : token;
 
     const { data } = await firstValueFrom(
       this.http.get(

@@ -28,10 +28,11 @@ export class GiftByUserSkill implements SkillHandler {
     const headers = { 'x-api-token': this.apiKey };
 
     const { data } = await firstValueFrom(
-      this.http.get(
-        `${this.baseUrl}/api/v1/gifts/get_gift_by_user`,
-        { headers, params: { user_id: userId }, timeout: 15000 },
-      ),
+      this.http.get(`${this.baseUrl}/api/v1/gifts/get_gift_by_user`, {
+        headers,
+        params: { user_id: userId },
+        timeout: 15000,
+      }),
     );
 
     if (!data || data.status === 'error') {

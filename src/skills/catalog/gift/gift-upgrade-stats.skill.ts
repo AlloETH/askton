@@ -25,10 +25,10 @@ export class GiftUpgradeStatsSkill implements SkillHandler {
     const headers = { 'x-api-token': this.apiKey };
 
     const { data } = await firstValueFrom(
-      this.http.get(
-        `${this.baseUrl}/api/v1/gifts/get_gifts_update_stat`,
-        { headers, timeout: 15000 },
-      ),
+      this.http.get(`${this.baseUrl}/api/v1/gifts/get_gifts_update_stat`, {
+        headers,
+        timeout: 15000,
+      }),
     );
 
     if (!data || data.status === 'error') {

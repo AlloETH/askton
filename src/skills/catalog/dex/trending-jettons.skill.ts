@@ -29,7 +29,10 @@ export class TrendingJettonsSkill implements SkillHandler {
           a.third_party_usd_price &&
           a.popularity_index != null,
       )
-      .sort((a: any, b: any) => (b.popularity_index || 0) - (a.popularity_index || 0))
+      .sort(
+        (a: any, b: any) =>
+          (b.popularity_index || 0) - (a.popularity_index || 0),
+      )
       .slice(0, limit)
       .map((a: any, i: number) => ({
         rank: i + 1,
