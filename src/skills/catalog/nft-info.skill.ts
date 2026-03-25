@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { Skill, SkillHandler } from '../skill.decorator';
 
-@Injectable()
-export class NftInfoSkill {
+@Skill({
+  name: 'get_nft_info',
+  description: 'metadata and collection info for a TON NFT by address',
+  example: { nft_address: 'EQ...' },
+})
+export class NftInfoSkill implements SkillHandler {
   private apiKey: string;
 
   constructor(
@@ -14,7 +18,8 @@ export class NftInfoSkill {
     this.apiKey = this.config.get<string>('tonapiKey')!;
   }
 
-  async execute(nftAddress: string): Promise<any> {
+  async execute(input: any): Promise<any> {
+    const nftAddress: string = input.nft_address;
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
     const { data } = await firstValueFrom(

@@ -1,32 +1,47 @@
-import { Injectable } from '@nestjs/common';
-import { TonPriceSkill } from './ton-price.skill';
-import { WalletSkill } from './wallet.skill';
-import { NftInfoSkill } from './nft-info.skill';
-import { FragmentSkill } from './fragment.skill';
+import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef, Reflector } from '@nestjs/core';
+import { SKILL_META_KEY, SKILL_CLASSES, SkillMeta, SkillHandler } from './skill.decorator';
 
 @Injectable()
 export class SkillsService {
+  private readonly logger = new Logger(SkillsService.name);
+  private readonly registry = new Map<string, SkillHandler>();
+  private readonly metas: SkillMeta[] = [];
+
   constructor(
-    private tonPriceSkill: TonPriceSkill,
-    private walletSkill: WalletSkill,
-    private nftInfoSkill: NftInfoSkill,
-    private fragmentSkill: FragmentSkill,
+    private moduleRef: ModuleRef,
+    private reflector: Reflector,
   ) {}
 
-  async dispatch(skillName: string, input: any): Promise<any> {
-    try {
-      switch (skillName) {
-        case 'get_ton_price':
-          return this.tonPriceSkill.execute();
-        case 'get_wallet_info':
-          return this.walletSkill.execute(input.address);
-        case 'get_nft_info':
-          return this.nftInfoSkill.execute(input.nft_address);
-        case 'get_username_price':
-          return this.fragmentSkill.execute(input.username);
-        default:
-          return { error: 'Unknown skill' };
+  onModuleInit() {
+    for (const skillClass of SKILL_CLASSES) {
+      const meta = this.reflector.get<SkillMeta>(SKILL_META_KEY, skillClass);
+      if (meta) {
+        const instance = this.moduleRef.get(skillClass, { strict: false });
+        this.registry.set(meta.name, instance);
+        this.metas.push(meta);
+        this.logger.log(`Registered skill: ${meta.name}`);
       }
+    }
+  }
+
+  getSkillPromptBlock(): string {
+    return this.metas
+      .map((m) => {
+        const example = JSON.stringify({ skill: m.name, input: m.example });
+        return `${m.name} — ${m.description}\nExample: ${example}`;
+      })
+      .join('\n\n');
+  }
+
+  async dispatch(skillName: string, input: any): Promise<any> {
+    const skill = this.registry.get(skillName);
+    if (!skill) {
+      return { error: `Unknown skill: ${skillName}` };
+    }
+
+    try {
+      return await skill.execute(input);
     } catch (error) {
       return { error: 'Could not fetch data', detail: error.message };
     }

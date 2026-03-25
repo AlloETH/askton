@@ -3,11 +3,12 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { SkillsService } from '../skills/skills.service';
-import { SYSTEM_PROMPT } from './agent.prompts';
+import { buildSystemPrompt } from './agent.prompts';
 
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
+  private systemPrompt: string;
 
   constructor(
     private http: HttpService,
@@ -15,16 +16,20 @@ export class AgentService {
     private skillsService: SkillsService,
   ) {}
 
+  onModuleInit() {
+    this.systemPrompt = buildSystemPrompt(this.skillsService.getSkillPromptBlock());
+    this.logger.log('System prompt built with registered skills');
+  }
+
   async run(query: string, groupId: string, username: string): Promise<string> {
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: this.systemPrompt },
       { role: 'user', content: `${username} asks: ${query}` },
     ];
 
     let reply = await this.callLlm(messages);
     this.logger.log(`LLM reply: ${reply}`);
 
-    // Skill loop — max 3 iterations to prevent infinite loops
     for (let i = 0; i < 3; i++) {
       const skillCall = this.extractSkillJson(reply);
       if (!skillCall) break;
@@ -46,7 +51,6 @@ export class AgentService {
       }
     }
 
-    // Guard: if still a skill signal after loop, return fallback
     if (this.extractSkillJson(reply)) {
       reply = "I'm having trouble fetching that data right now. Try again in a moment.";
     }
@@ -55,8 +59,6 @@ export class AgentService {
   }
 
   private extractSkillJson(text: string): { skill: string; input: any } | null {
-    // Try to find skill JSON anywhere in the response
-    // Handles: raw JSON, markdown code blocks, JSON mixed with text
     const patterns = [
       /```(?:json)?\s*(\{[\s\S]*?"skill"[\s\S]*?\})\s*```/,
       /(\{"skill"\s*:\s*"[^"]+"\s*,\s*"input"\s*:\s*\{[^}]*\}\s*\})/,
@@ -75,7 +77,6 @@ export class AgentService {
       }
     }
 
-    // Fallback: try to find any JSON object with "skill" key
     const jsonMatch = text.match(/\{[^{}]*"skill"\s*:\s*"[^"]*"[^{}]*\}/);
     if (jsonMatch) {
       try {

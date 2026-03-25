@@ -1,9 +1,13 @@
-import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { Skill, SkillHandler } from '../skill.decorator';
 
-@Injectable()
-export class TonPriceSkill {
+@Skill({
+  name: 'get_ton_price',
+  description: 'current TON price in USD, EUR, BTC',
+  example: {},
+})
+export class TonPriceSkill implements SkillHandler {
   constructor(private http: HttpService) {}
 
   async execute(): Promise<any> {
@@ -13,10 +17,6 @@ export class TonPriceSkill {
     const { data } = await firstValueFrom(this.http.get(url));
     const ton = data['the-open-network'];
 
-    return {
-      usd: ton.usd,
-      eur: ton.eur,
-      btc: ton.btc,
-    };
+    return { usd: ton.usd, eur: ton.eur, btc: ton.btc };
   }
 }

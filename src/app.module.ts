@@ -20,7 +20,7 @@ import { SkillsModule } from './skills/skills.module';
     }),
     TelegramModule,
     AgentModule,
-    SkillsModule,
+    SkillsModule.forRoot(),
   ],
 })
 export class AppModule {}

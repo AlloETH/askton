@@ -1,10 +1,14 @@
-import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { Skill, SkillHandler } from '../skill.decorator';
 
-@Injectable()
-export class WalletSkill {
+@Skill({
+  name: 'get_wallet_info',
+  description: 'TON balance and NFTs for a wallet address or @username',
+  example: { address: 'UQ... or @username' },
+})
+export class WalletSkill implements SkillHandler {
   private apiKey: string;
 
   constructor(
@@ -14,10 +18,10 @@ export class WalletSkill {
     this.apiKey = this.config.get<string>('tonapiKey')!;
   }
 
-  async execute(address: string): Promise<any> {
+  async execute(input: any): Promise<any> {
+    const address: string = input.address;
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
-    // Resolve @username to address
     let resolved = address;
     if (address.startsWith('@')) {
       const dns = address.slice(1) + '.t.me';
@@ -27,12 +31,10 @@ export class WalletSkill {
       resolved = data.wallet?.address || address;
     }
 
-    // Fetch account info
     const { data: account } = await firstValueFrom(
       this.http.get(`https://tonapi.io/v2/accounts/${resolved}`, { headers }),
     );
 
-    // Fetch NFTs
     let nfts = [];
     try {
       const { data: nftData } = await firstValueFrom(

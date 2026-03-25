@@ -27,22 +27,20 @@ export class TelegramService {
     const isPrivate = msg.chat.type === 'private';
 
     if (!isPrivate) {
-      // In groups, require @mention
+      // In groups, respond to @mentions OR replies to the bot's messages
+      const isReplyToBot =
+        msg.reply_to_message?.from?.username?.toLowerCase() === this.botUsername.toLowerCase();
+
       const entities = msg.entities || [];
       const mentions = entities
         .filter((e: any) => e.type === 'mention')
         .map((e: any) => msg.text.slice(e.offset, e.offset + e.length));
 
-      this.logger.log(`Mentions found: ${JSON.stringify(mentions)}, looking for @${this.botUsername}`);
-
       const mentioned = mentions.some(
         (m: string) => m.toLowerCase() === `@${this.botUsername.toLowerCase()}`,
       );
 
-      if (!mentioned) {
-        this.logger.log('Bot not mentioned, ignoring');
-        return;
-      }
+      if (!mentioned && !isReplyToBot) return;
     }
 
     // Extract query (remove mention)

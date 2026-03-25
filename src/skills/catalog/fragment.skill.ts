@@ -1,52 +1,47 @@
-import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { Skill, SkillHandler } from '../skill.decorator';
 
-@Injectable()
-export class FragmentSkill {
+@Skill({
+  name: 'get_username_price',
+  description: 'Fragment marketplace price for a Telegram username',
+  example: { username: 'allo' },
+})
+export class FragmentSkill implements SkillHandler {
   constructor(private http: HttpService) {}
 
-  async execute(username: string): Promise<any> {
-    const clean = username.replace(/^@/, '');
-    const url = `https://fragment.com/username/${clean}`;
+  async execute(input: Record<string, string>): Promise<any> {
+    const username = (input.username || '').replace(/^@/, '');
+    const url = `https://fragment.com/username/${username}`;
 
     const { data: html } = await firstValueFrom(
-      this.http.get(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible bot)',
-        },
+      this.http.get<string>(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible bot)' },
         responseType: 'text',
       }),
     );
 
     const body = typeof html === 'string' ? html : String(html);
 
-    // Try to extract price from page content
     let priceTon: number | null = null;
     let priceStars: number | null = null;
     let available = false;
     let isAuction = false;
 
-    // Look for TON price patterns
     const tonMatch = body.match(/(\d+(?:\.\d+)?)\s*TON/i);
     if (tonMatch) {
       priceTon = parseFloat(tonMatch[1]);
       available = true;
     }
 
-    // Look for Stars price patterns
     const starsMatch = body.match(/(\d+(?:,\d+)*)\s*Stars?/i);
     if (starsMatch) {
       priceStars = parseInt(starsMatch[1].replace(/,/g, ''), 10);
       available = true;
     }
 
-    // Check for auction
-    if (/auction|bid/i.test(body)) {
-      isAuction = true;
-    }
+    if (/auction|bid/i.test(body)) isAuction = true;
 
-    // Check availability
     if (/taken|sold|unavailable/i.test(body) && !priceTon && !priceStars) {
       available = false;
     } else if (/available|buy|purchase/i.test(body)) {
@@ -54,7 +49,7 @@ export class FragmentSkill {
     }
 
     return {
-      username: clean,
+      username,
       available,
       priceTon,
       priceStars,

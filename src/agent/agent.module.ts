@@ -1,10 +1,9 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { AgentService } from './agent.service';
-import { SkillsModule } from '../skills/skills.module';
 
 @Module({
-  imports: [HttpModule, SkillsModule],
+  imports: [HttpModule],
   providers: [AgentService],
   exports: [AgentService],
 })
