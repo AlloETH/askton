@@ -6,8 +6,8 @@ import { Skill, SkillHandler } from '../../skill.decorator';
 @Skill({
   name: 'get_unique_gift_prices',
   description:
-    'get pricing for unique/rare gift variants within a specific collection',
-  example: { collection: 'Homemade Cake' },
+    'get floor prices for a specific gift collection across all marketplaces. Requires exact collection name (e.g. "Plush Pepe")',
+  example: { collection_name: 'Plush Pepe' },
 })
 export class GiftUniquePricesSkill implements SkillHandler {
   private apiKey: string;
@@ -22,20 +22,24 @@ export class GiftUniquePricesSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const headers = { 'x-api-token': this.apiKey };
+    const collectionName: string = input.collection_name || input.collection;
+    if (!collectionName) return { error: 'Missing collection_name' };
 
-    const params: any = {};
-    if (input.collection) params.collection = input.collection;
+    const headers = { 'x-api-token': this.apiKey };
 
     const { data } = await firstValueFrom(
       this.http.get(
         `${this.baseUrl}/api/v1/gifts/get_unique_gifts_price_list`,
-        { headers, params, timeout: 15000 },
+        {
+          headers,
+          params: { collection_name: collectionName },
+          timeout: 15000,
+        },
       ),
     );
 
     if (!data || data.status === 'error') {
-      return { error: data?.message || 'Failed to fetch unique prices' };
+      return { error: data?.message || 'Collection not found' };
     }
 
     return data;

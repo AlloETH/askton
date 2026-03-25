@@ -6,8 +6,8 @@ import { Skill, SkillHandler } from '../../skill.decorator';
 @Skill({
   name: 'get_user_gift_collections',
   description:
-    'list all gift collections owned by a Telegram user with counts and collection details',
-  example: { user_id: '123456789' },
+    'list all gift collections owned by a Telegram user with counts and collection details. Requires @username',
+  example: { username: 'durov' },
 })
 export class GiftCollectionsUserSkill implements SkillHandler {
   private apiKey: string;
@@ -22,15 +22,22 @@ export class GiftCollectionsUserSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const userId: string = input.user_id || input.username;
-    if (!userId) return { error: 'Missing user_id or username' };
+    const username: string = (input.username || input.user || '')
+      .replace(/^@/, '')
+      .trim();
+    if (!username) return { error: 'Missing username' };
 
-    const headers = { 'x-api-token': this.apiKey };
+    const headers = {
+      'x-api-token': this.apiKey,
+      'Content-Type': 'application/json',
+    };
+    const limit = Math.min(input.limit || 100, 100);
 
     const { data } = await firstValueFrom(
-      this.http.get(
-        `${this.baseUrl}/api/v1/gifts/get_all_collections_by_user`,
-        { headers, params: { user_id: userId }, timeout: 15000 },
+      this.http.post(
+        `${this.baseUrl}/api/v1/gifts/get_all_collections_by_user?username=${encodeURIComponent(username)}`,
+        { limit },
+        { headers, timeout: 15000 },
       ),
     );
 

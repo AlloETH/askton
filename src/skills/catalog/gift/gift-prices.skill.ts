@@ -27,6 +27,7 @@ export class GiftPricesSkill implements SkillHandler {
     const { data } = await firstValueFrom(
       this.http.get(`${this.baseUrl}/api/v1/gifts/get_gifts_price_list`, {
         headers,
+        params: { models: true },
         timeout: 15000,
       }),
     );

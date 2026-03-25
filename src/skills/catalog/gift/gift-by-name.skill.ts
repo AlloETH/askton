@@ -6,8 +6,8 @@ import { Skill, SkillHandler } from '../../skill.decorator';
 @Skill({
   name: 'get_gift_by_name',
   description:
-    'search for a Telegram gift by its exact name (e.g. "Homemade Cake") — returns all variants with prices and supply',
-  example: { name: 'Homemade Cake' },
+    'look up a specific Telegram gift by its full slug name (e.g. "EasterEgg-1") — returns rarity, attributes, and market data',
+  example: { name: 'EasterEgg-1' },
 })
 export class GiftByNameSkill implements SkillHandler {
   private apiKey: string;
@@ -27,16 +27,32 @@ export class GiftByNameSkill implements SkillHandler {
 
     const headers = { 'x-api-token': this.apiKey };
 
+    // Try the v1 endpoint first
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get(`${this.baseUrl}/api/v1/gifts/get_gift_by_name`, {
+          headers,
+          params: { name },
+          timeout: 15000,
+        }),
+      );
+
+      if (data && data.status !== 'error') return data;
+    } catch {
+      // If 403 (not whitelisted), fall back to POST /api/gifts
+    }
+
+    // Fallback: use POST /api/gifts with slug
     const { data } = await firstValueFrom(
-      this.http.get(`${this.baseUrl}/api/v1/gifts/get_gift_by_name`, {
-        headers,
-        params: { name },
-        timeout: 15000,
-      }),
+      this.http.post(
+        `${this.baseUrl}/api/gifts`,
+        { slug: name },
+        { headers, timeout: 15000 },
+      ),
     );
 
-    if (!data || data.status === 'error') {
-      return { error: data?.message || 'Gift not found' };
+    if (!data || (!data.title && !data.model && !data.owner)) {
+      return { error: `Gift "${name}" not found` };
     }
 
     return data;

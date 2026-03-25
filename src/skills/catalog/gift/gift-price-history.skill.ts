@@ -6,8 +6,8 @@ import { Skill, SkillHandler } from '../../skill.decorator';
 @Skill({
   name: 'get_gift_price_history',
   description:
-    'get historical price data for Telegram gifts — 24h hourly or 7d daily floor prices across marketplaces',
-  example: { period: '24h' },
+    'get historical price data for Telegram gifts — optionally filter by collection name for specific history',
+  example: { collection_name: 'Plush Pepe' },
 })
 export class GiftPriceHistorySkill implements SkillHandler {
   private apiKey: string;
@@ -22,13 +22,15 @@ export class GiftPriceHistorySkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const period: string = input.period || '24h';
     const headers = { 'x-api-token': this.apiKey };
+
+    const params: Record<string, string> = {};
+    if (input.collection_name) params.collection_name = input.collection_name;
 
     const { data } = await firstValueFrom(
       this.http.get(
         `${this.baseUrl}/api/v1/gifts/get_gifts_price_list_history`,
-        { headers, params: { period }, timeout: 15000 },
+        { headers, params, timeout: 15000 },
       ),
     );
 

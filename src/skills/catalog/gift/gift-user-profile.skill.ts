@@ -6,8 +6,8 @@ import { Skill, SkillHandler } from '../../skill.decorator';
 @Skill({
   name: 'get_user_gift_profile',
   description:
-    'get total value of a Telegram user gift profile in TON — portfolio valuation, top gifts, and collection breakdown',
-  example: { user_id: '123456789' },
+    'get total value of a Telegram user gift profile in TON — portfolio valuation and collection breakdown. Requires @username',
+  example: { username: 'durov' },
 })
 export class GiftUserProfileSkill implements SkillHandler {
   private apiKey: string;
@@ -22,15 +22,18 @@ export class GiftUserProfileSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const userId: string = input.user_id || input.username;
-    if (!userId) return { error: 'Missing user_id or username' };
+    const username: string = (input.username || input.user || '')
+      .replace(/^@/, '')
+      .trim();
+    if (!username) return { error: 'Missing username' };
 
     const headers = { 'x-api-token': this.apiKey };
+    const limit = Math.min(input.limit || 100, 100);
 
     const { data } = await firstValueFrom(
       this.http.get(`${this.baseUrl}/api/v1/gifts/get_user_profile_price`, {
         headers,
-        params: { user_id: userId },
+        params: { username, limit },
         timeout: 15000,
       }),
     );

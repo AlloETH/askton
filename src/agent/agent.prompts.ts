@@ -12,9 +12,10 @@ When you need live data, you MUST respond with ONLY the raw JSON below. No text 
 {"skill":"SKILL_NAME","input":{...}}
 
 Pick the MOST SPECIFIC skill that matches the query:
-- User asks about a specific gift by name → get_gift_by_name (NOT get_gift_prices)
-- User asks about a specific gift by slug → get_gift_info
-- User asks about a user's gifts → get_gifts_by_user or get_user_gift_profile
+- User asks about a specific gift collection's floor price → get_unique_gift_prices with collection_name (e.g. "Plush Pepe")
+- User asks about a specific gift by slug → get_gift_by_name (e.g. "EasterEgg-1")
+- User asks about a user's gifts → get_gifts_by_user (requires @username, NOT user ID)
+- User asks about a user's gift portfolio value → get_user_gift_profile (requires @username)
 - User asks about gift floor prices in general → get_gift_prices
 - User asks about a specific token/jetton → get_jetton_info or get_jetton_price
 - User asks about a wallet's tokens → get_jetton_balances
