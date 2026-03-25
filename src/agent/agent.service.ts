@@ -5,6 +5,16 @@ import { firstValueFrom } from 'rxjs';
 import { SkillsService } from '../skills/skills.service';
 import { buildSystemPrompt } from './agent.prompts';
 
+interface SkillCall {
+  skill: string;
+  input: Record<string, unknown>;
+}
+
+interface LlmMessage {
+  role: string;
+  content: string;
+}
+
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
@@ -17,12 +27,14 @@ export class AgentService {
   ) {}
 
   onModuleInit() {
-    this.systemPrompt = buildSystemPrompt(this.skillsService.getSkillPromptBlock());
+    this.systemPrompt = buildSystemPrompt(
+      this.skillsService.getSkillPromptBlock(),
+    );
     this.logger.log('System prompt built with registered skills');
   }
 
   async run(query: string, groupId: string, username: string): Promise<string> {
-    const messages = [
+    const messages: LlmMessage[] = [
       { role: 'system', content: this.systemPrompt },
       { role: 'user', content: `${username} asks: ${query}` },
     ];
@@ -34,14 +46,26 @@ export class AgentService {
       const skillCall = this.extractSkillJson(reply);
       if (!skillCall) break;
 
-      this.logger.log(`Skill detected: ${skillCall.skill} with input ${JSON.stringify(skillCall.input)}`);
+      this.logger.log(
+        `Skill detected: ${skillCall.skill} with input ${JSON.stringify(skillCall.input)}`,
+      );
 
       try {
-        const skillResult = await this.skillsService.dispatch(skillCall.skill, skillCall.input || {});
+        const skillResult: Record<string, unknown> =
+          await this.skillsService.dispatch(
+            skillCall.skill,
+            skillCall.input || {},
+          );
         this.logger.log(`Skill result: ${JSON.stringify(skillResult)}`);
 
-        messages.push({ role: 'assistant', content: JSON.stringify(skillCall) });
-        messages.push({ role: 'user', content: 'Data result: ' + JSON.stringify(skillResult) });
+        messages.push({
+          role: 'assistant',
+          content: JSON.stringify(skillCall),
+        });
+        messages.push({
+          role: 'user',
+          content: 'Data result: ' + JSON.stringify(skillResult),
+        });
 
         reply = await this.callLlm(messages);
         this.logger.log(`LLM follow-up reply: ${reply}`);
@@ -52,13 +76,14 @@ export class AgentService {
     }
 
     if (this.extractSkillJson(reply)) {
-      reply = "I'm having trouble fetching that data right now. Try again in a moment.";
+      reply =
+        "I'm having trouble fetching that data right now. Try again in a moment.";
     }
 
     return reply;
   }
 
-  private extractSkillJson(text: string): { skill: string; input: any } | null {
+  private extractSkillJson(text: string): SkillCall | null {
     const patterns = [
       /```(?:json)?\s*(\{[\s\S]*?"skill"[\s\S]*?\})\s*```/,
       /(\{"skill"\s*:\s*"[^"]+"\s*,\s*"input"\s*:\s*\{[^}]*\}\s*\})/,
@@ -69,7 +94,7 @@ export class AgentService {
       const match = text.match(pattern);
       if (match) {
         try {
-          const parsed = JSON.parse(match[1]);
+          const parsed = JSON.parse(match[1]) as SkillCall;
           if (parsed.skill) return parsed;
         } catch {
           continue;
@@ -80,7 +105,7 @@ export class AgentService {
     const jsonMatch = text.match(/\{[^{}]*"skill"\s*:\s*"[^"]*"[^{}]*\}/);
     if (jsonMatch) {
       try {
-        const parsed = JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]) as SkillCall;
         if (parsed.skill) return parsed;
       } catch {
         // ignore
@@ -90,12 +115,12 @@ export class AgentService {
     return null;
   }
 
-  private async callLlm(messages: any[]): Promise<string> {
-    const url = this.config.get<string>('rapidApiUrl');
+  private async callLlm(messages: LlmMessage[]): Promise<string> {
+    const url = this.config.get<string>('rapidApiUrl')!;
 
     const { data } = await firstValueFrom(
-      this.http.post(
-        url!,
+      this.http.post<Record<string, unknown>>(
+        url,
         JSON.stringify({ messages, web_access: false }),
         {
           headers: {
@@ -107,6 +132,13 @@ export class AgentService {
       ),
     );
 
-    return data?.result || data?.choices?.[0]?.message?.content || 'Sorry, I got no response.';
+    const result = data?.result as string | undefined;
+    const choices = data?.choices as
+      | Array<{ message?: { content?: string } }>
+      | undefined;
+
+    return (
+      result || choices?.[0]?.message?.content || 'Sorry, I got no response.'
+    );
   }
 }

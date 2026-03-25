@@ -7,6 +7,5 @@ export default () => ({
     process.env.RAPIDAPI_URL || 'https://chatgpt-42.p.rapidapi.com/gpt4',
   tonapiKey: process.env.TONAPI_KEY,
   giftassetApiKey: process.env.GIFTASSET_API_KEY,
-  giftassetApiUrl:
-    process.env.GIFTASSET_API_URL || 'https://api.giftasset.dev',
+  giftassetApiUrl: process.env.GIFTASSET_API_URL || 'https://api.giftasset.dev',
 });

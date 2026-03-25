@@ -30,21 +30,30 @@ export class SkillsModule {
 
       for (const file of files) {
         try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
           require(file);
-        } catch (err) {
+        } catch (err: unknown) {
           const name = path.relative(skillsDir, file);
-          this.logger.error(`Failed to load skill ${name}, skipping: ${err.message}`);
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            `Failed to load skill ${name}, skipping: ${message}`,
+          );
         }
       }
 
       this.loaded = true;
-      this.logger.log(`Loaded ${SKILL_CLASSES.length} skills from ${files.length} files`);
+      this.logger.log(
+        `Loaded ${SKILL_CLASSES.length} skills from ${files.length} files`,
+      );
     }
 
     return {
       module: SkillsModule,
       imports: [HttpModule],
-      providers: [SkillsService, ...(SKILL_CLASSES as any[])],
+      providers: [
+        SkillsService,
+        ...(SKILL_CLASSES as Array<new (...args: unknown[]) => unknown>),
+      ],
       exports: [SkillsService],
       global: true,
     };
