@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import Anthropic from '@anthropic-ai/sdk';
 import { SkillsService } from '../skills/skills.service';
 import { buildSystemPrompt } from './agent.prompts';
 
@@ -19,12 +20,30 @@ interface LlmMessage {
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private systemPrompt: string;
+  private anthropic: Anthropic | null = null;
+  private readonly provider: string;
+  private lastRapidApiCall = 0;
 
   constructor(
     private http: HttpService,
     private config: ConfigService,
     private skillsService: SkillsService,
-  ) {}
+  ) {
+    this.provider = this.config.get<string>('llmProvider') || 'rapidapi';
+
+    if (this.provider === 'claude') {
+      const apiKey = this.config.get<string>('anthropicApiKey');
+      if (!apiKey) {
+        throw new Error(
+          'ANTHROPIC_API_KEY is required when LLM_PROVIDER=claude',
+        );
+      }
+      this.anthropic = new Anthropic({ apiKey });
+      this.logger.log('Using Claude as LLM provider');
+    } else {
+      this.logger.log('Using RapidAPI as LLM provider');
+    }
+  }
 
   onModuleInit() {
     this.systemPrompt = buildSystemPrompt(
@@ -33,7 +52,11 @@ export class AgentService {
     this.logger.log('System prompt built with registered skills');
   }
 
-  async run(query: string, groupId: string, username: string): Promise<string> {
+  async run(
+    query: string,
+    groupId: string,
+    username: string,
+  ): Promise<string> {
     const messages: LlmMessage[] = [
       { role: 'system', content: this.systemPrompt },
       { role: 'user', content: `${username} asks: ${query}` },
@@ -116,6 +139,49 @@ export class AgentService {
   }
 
   private async callLlm(messages: LlmMessage[]): Promise<string> {
+    if (this.provider === 'claude') {
+      return this.callClaude(messages);
+    }
+    return this.callRapidApi(messages);
+  }
+
+  private async callClaude(messages: LlmMessage[]): Promise<string> {
+    const systemMsg = messages.find((m) => m.role === 'system');
+    const chatMessages = messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+
+    const response = await this.anthropic!.messages.create({
+      model: this.config.get<string>('anthropicModel') || 'claude-sonnet-4-6',
+      max_tokens: 512,
+      system: systemMsg?.content || '',
+      messages: chatMessages,
+    });
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    return textBlock?.text || 'Sorry, I got no response.';
+  }
+
+  private async rateLimitRapidApi(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - this.lastRapidApiCall;
+    const minInterval = 1000; // 1 request per second
+
+    if (elapsed < minInterval) {
+      const waitMs = minInterval - elapsed;
+      this.logger.debug(`Rate limiting RapidAPI: waiting ${waitMs}ms`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
+    this.lastRapidApiCall = Date.now();
+  }
+
+  private async callRapidApi(messages: LlmMessage[]): Promise<string> {
+    await this.rateLimitRapidApi();
+
     const url = this.config.get<string>('rapidApiUrl')!;
 
     const { data } = await firstValueFrom(
