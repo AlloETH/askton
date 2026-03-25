@@ -23,7 +23,7 @@ export class TelegramUpdate {
         '🎁 *NFT Info* — metadata for any TON NFT\n' +
         '🏷 *Username Price* — Fragment marketplace pricing\n\n' +
         'Just @mention me in a group with your question!\n' +
-        "Example: `@tonsaybot what's TON trading at?`",
+        "Example: `@asktonbot what's TON trading at?`",
       { parse_mode: 'Markdown' },
     );
   }
