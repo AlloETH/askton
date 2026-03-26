@@ -97,7 +97,7 @@ export class AgentService {
     let reply = await this.callLlm(messages, undefined, 'full', 0.3);
     this.logger.log(`LLM reply: ${reply}`);
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       const skillCall = this.extractSkillJson(reply);
       if (!skillCall) break;
 
@@ -125,7 +125,7 @@ export class AgentService {
         // Small data → fast model can summarize it fine
         // Large data → full model for better comprehension
         const tier = resultStr.length > LARGE_RESULT_THRESHOLD ? 'full' : 'fast';
-        const isLastIteration = i === 2;
+        const isLastIteration = i === 4;
         reply = await this.callLlm(
           messages,
           isLastIteration ? onChunk : undefined,

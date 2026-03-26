@@ -144,6 +144,28 @@ export class StonfiSearchSkill implements SkillHandler {
       image: s.asset.image_url || null,
     }));
 
+    // Enrich top verified result with live price from TonAPI rates
+    const topVerified = results.find((r) => r.verified && !r.priceUsd);
+    if (topVerified) {
+      try {
+        const headers = { Authorization: `Bearer ${this.apiKey}` };
+        const { data: ratesData } = await firstValueFrom(
+          this.http.get(
+            `https://tonapi.io/v2/rates?tokens=${topVerified.address}&currencies=usd,ton`,
+            { headers, timeout: 10000 },
+          ),
+        );
+        const rate = ratesData.rates?.[topVerified.address];
+        if (rate) {
+          topVerified.priceUsd = rate.prices?.USD || null;
+          (topVerified as any).priceTon = rate.prices?.TON || null;
+          (topVerified as any).change24h = rate.diff_24h?.USD || null;
+        }
+      } catch {
+        // rates fetch optional
+      }
+    }
+
     const verified = results.filter((r) => r.verified);
     return {
       query,
