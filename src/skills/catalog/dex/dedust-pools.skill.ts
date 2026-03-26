@@ -1,6 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { Skill, SkillHandler } from '../../skill.decorator';
+import { Skill, SkillHandler } from '../../skill.decorator.js';
 
 @Skill({
   name: 'get_dedust_pools',

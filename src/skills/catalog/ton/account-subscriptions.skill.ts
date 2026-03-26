@@ -1,8 +1,8 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { Skill, SkillHandler } from '../../skill.decorator';
-import { resolveUsername } from '../../resolve-username';
+import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { resolveUsername } from '../../resolve-username.js';
 
 @Skill({
   name: 'get_account_subscriptions',

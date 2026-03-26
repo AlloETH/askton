@@ -5,7 +5,7 @@ import {
   SKILL_CLASSES,
   SkillMeta,
   SkillHandler,
-} from './skill.decorator';
+} from './skill.decorator.js';
 
 @Injectable()
 export class SkillsService {

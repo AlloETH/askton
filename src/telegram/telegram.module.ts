@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
-import { TelegramUpdate } from './telegram.update';
-import { TelegramService } from './telegram.service';
-import { MtprotoModule } from './mtproto.module';
-import { AgentModule } from '../agent/agent.module';
+import { TelegramUpdate } from './telegram.update.js';
+import { TelegramService } from './telegram.service.js';
+import { MtprotoModule } from './mtproto.module.js';
+import { AgentModule } from '../agent/agent.module.js';
 
 @Module({
   imports: [AgentModule, MtprotoModule],

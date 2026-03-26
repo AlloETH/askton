@@ -1,50 +1,72 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-import { SkillsService } from '../skills/skills.service';
-import { buildSystemPrompt } from './agent.prompts';
+import { SkillsService } from '../skills/skills.service.js';
+import { buildSystemPrompt } from './agent.prompts.js';
+import { getModel, getEnvApiKey, stream, complete } from '@mariozechner/pi-ai';
+import type {
+  AssistantMessage,
+  UserMessage,
+  Message,
+  TextContent,
+  Context,
+} from '@mariozechner/pi-ai';
 
 interface SkillCall {
   skill: string;
   input: Record<string, unknown>;
 }
 
-interface LlmMessage {
-  role: string;
-  content: string;
-}
+export type OnStreamChunk = (accumulated: string) => void;
 
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private systemPrompt: string;
-  private lastRapidApiCall = 0;
 
   constructor(
-    private http: HttpService,
     private config: ConfigService,
     private skillsService: SkillsService,
   ) {}
 
-  async onModuleInit() {
+  onModuleInit() {
     this.systemPrompt = buildSystemPrompt(
       this.skillsService.getSkillPromptBlock(),
     );
     this.logger.log('System prompt built with registered skills');
+
+    const provider = this.config.get<string>('llmProvider')!;
+    const modelId = this.config.get<string>('llmModel')!;
+    const model = getModel(provider as any, modelId as any);
+    if (!model) {
+      throw new Error(`Unknown model: ${provider}/${modelId}`);
+    }
+
+    const apiKey = getEnvApiKey(provider as any);
+    if (!apiKey) {
+      throw new Error(
+        `No API key found for provider "${provider}". ` +
+          'Set the appropriate env var (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, etc.)',
+      );
+    }
+
+    this.logger.log(`LLM ready: ${provider}/${modelId}`);
   }
 
   async run(
     query: string,
-    groupId: string,
+    _groupId: string,
     username: string,
+    onChunk?: OnStreamChunk,
   ): Promise<string> {
-    const messages: LlmMessage[] = [
-      { role: 'system', content: this.systemPrompt },
-      { role: 'user', content: `${username} asks: ${query}` },
+    const messages: Message[] = [
+      {
+        role: 'user',
+        content: `${username} asks: ${query}`,
+        timestamp: Date.now(),
+      },
     ];
 
-    let reply = await this.callRapidApi(messages);
+    let reply = await this.callLlm(messages, onChunk);
     this.logger.log(`LLM reply: ${reply}`);
 
     for (let i = 0; i < 3; i++) {
@@ -63,16 +85,18 @@ export class AgentService {
           );
         this.logger.log(`Skill result: ${JSON.stringify(skillResult)}`);
 
-        messages.push({
-          role: 'assistant',
-          content: JSON.stringify(skillCall),
-        });
+        messages.push(this.makeAssistantMessage(JSON.stringify(skillCall)));
         messages.push({
           role: 'user',
           content: 'Data result: ' + JSON.stringify(skillResult),
-        });
+          timestamp: Date.now(),
+        } as UserMessage);
 
-        reply = await this.callRapidApi(messages);
+        const isLastIteration = i === 2;
+        reply = await this.callLlm(
+          messages,
+          isLastIteration ? onChunk : undefined,
+        );
         this.logger.log(`LLM follow-up reply: ${reply}`);
       } catch (err) {
         this.logger.error('Skill dispatch error', err);
@@ -120,54 +144,71 @@ export class AgentService {
     return null;
   }
 
-  private async rateLimitRapidApi(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - this.lastRapidApiCall;
-    const minInterval = 1000; // 1 request per second
-
-    if (elapsed < minInterval) {
-      const waitMs = minInterval - elapsed;
-      this.logger.debug(`Rate limiting RapidAPI: waiting ${waitMs}ms`);
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
-    }
-
-    this.lastRapidApiCall = Date.now();
+  private makeAssistantMessage(text: string): AssistantMessage {
+    const provider = this.config.get<string>('llmProvider')!;
+    const modelId = this.config.get<string>('llmModel')!;
+    return {
+      role: 'assistant',
+      content: [{ type: 'text', text } as TextContent],
+      api: 'anthropic-messages',
+      provider,
+      model: modelId,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: 'stop',
+      timestamp: Date.now(),
+    };
   }
 
-  private async callRapidApi(messages: LlmMessage[]): Promise<string> {
-    await this.rateLimitRapidApi();
+  private async callLlm(
+    messages: Message[],
+    onChunk?: OnStreamChunk,
+  ): Promise<string> {
+    const provider = this.config.get<string>('llmProvider')!;
+    const modelId = this.config.get<string>('llmModel')!;
+    const model = getModel(provider as any, modelId as any);
 
-    const url = this.config.get<string>('rapidApiUrl')!;
+    const context: Context = {
+      systemPrompt: this.systemPrompt,
+      messages,
+    };
+    const options = {
+      apiKey: getEnvApiKey(provider as any),
+      maxTokens: 512,
+      temperature: 0.9,
+    };
 
-    const { data } = await firstValueFrom(
-      this.http.post<Record<string, unknown>>(
-        url,
-        {
-          messages,
-          system_prompt: '',
-          temperature: 0.9,
-          top_k: 5,
-          top_p: 0.9,
-          max_tokens: 512,
-          web_access: false,
-        },
-        {
-          headers: {
-            'x-rapidapi-key': this.config.get<string>('rapidApiKey'),
-            'x-rapidapi-host': this.config.get<string>('rapidApiHost'),
-            'Content-Type': 'application/json',
-          },
-        },
-      ),
+    this.logger.debug(
+      `Calling ${provider}/${modelId} messages=${messages.length} streaming=${!!onChunk}`,
     );
 
-    const result = data?.result as string | undefined;
-    const choices = data?.choices as
-      | Array<{ message?: { content?: string } }>
-      | undefined;
+    if (onChunk) {
+      const eventStream = stream(model, context, options);
+      let accumulated = '';
 
-    return (
-      result || choices?.[0]?.message?.content || 'Sorry, I got no response.'
-    );
+      for await (const event of eventStream) {
+        if (event.type === 'text_delta' && 'delta' in event) {
+          accumulated += event.delta;
+          onChunk(accumulated);
+        }
+      }
+
+      return accumulated || 'Sorry, I got no response.';
+    }
+
+    const result = await complete(model, context, options);
+
+    const text = result.content
+      .filter((c): c is TextContent => c.type === 'text')
+      .map((c) => c.text)
+      .join('');
+
+    return text || 'Sorry, I got no response.';
   }
 }

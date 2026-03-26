@@ -1,10 +1,13 @@
 import { DynamicModule, Logger, Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { SkillsService } from './skills.service';
-import { SKILL_CLASSES } from './skill.decorator';
-import { MtprotoModule } from '../telegram/mtproto.module';
+import { SkillsService } from './skills.service.js';
+import { SKILL_CLASSES } from './skill.decorator.js';
+import { MtprotoModule } from '../telegram/mtproto.module.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 @Module({})
 export class SkillsModule {
@@ -24,15 +27,14 @@ export class SkillsModule {
     return results;
   }
 
-  static forRoot(): DynamicModule {
+  static async forRoot(): Promise<DynamicModule> {
     if (!this.loaded) {
       const skillsDir = path.resolve(__dirname, 'catalog');
       const files = this.scanSkillFiles(skillsDir);
 
       for (const file of files) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require(file);
+          await import(pathToFileURL(file).href);
         } catch (err: unknown) {
           const name = path.relative(skillsDir, file);
           const message = err instanceof Error ? err.message : String(err);

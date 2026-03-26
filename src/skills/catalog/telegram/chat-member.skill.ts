@@ -1,8 +1,8 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { Skill, SkillHandler } from '../../skill.decorator';
-import { MtprotoService } from '../../../telegram/mtproto.service';
+import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { MtprotoService } from '../../../telegram/mtproto.service.js';
 
 @Skill({
   name: 'check_chat_member',

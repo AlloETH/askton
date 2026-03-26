@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { Skill, SkillHandler } from '../../skill.decorator';
+import { Skill, SkillHandler } from '../../skill.decorator.js';
 
 const PERIOD_CONFIG: Record<string, { seconds: number; points: number }> = {
   '1h': { seconds: 3600, points: 60 },

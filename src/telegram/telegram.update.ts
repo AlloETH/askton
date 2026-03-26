@@ -1,6 +1,6 @@
 import { Update, On, Start, Help, Ctx } from 'nestjs-telegraf';
 import { Context } from 'telegraf';
-import { TelegramService } from './telegram.service';
+import { TelegramService } from './telegram.service.js';
 
 @Update()
 export class TelegramUpdate {

@@ -1,5 +1,5 @@
-import { Skill, SkillHandler } from '../../skill.decorator';
-import { MtprotoService } from '../../../telegram/mtproto.service';
+import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { MtprotoService } from '../../../telegram/mtproto.service.js';
 
 @Skill({
   name: 'get_channel_messages',

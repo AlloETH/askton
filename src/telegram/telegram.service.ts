@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Context } from 'telegraf';
-import { Message, Update } from 'telegraf/typings/core/types/typegram';
-import { AgentService } from '../agent/agent.service';
+import { Message, Update } from 'telegraf/types';
+import { AgentService } from '../agent/agent.service.js';
 
 type TextMessage = Update.New & Update.NonChannel & Message.TextMessage;
 
@@ -105,6 +105,7 @@ export class TelegramService {
         query,
         groupId,
         username,
+        scheduleEdit,
       );
 
       // Final edit with complete text + Markdown

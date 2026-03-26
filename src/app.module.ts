@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TelegrafModule } from 'nestjs-telegraf';
-import configuration from './config/configuration';
-import { TelegramModule } from './telegram/telegram.module';
-import { AgentModule } from './agent/agent.module';
-import { SkillsModule } from './skills/skills.module';
+import configuration from './config/configuration.js';
+import { TelegramModule } from './telegram/telegram.module.js';
+import { AgentModule } from './agent/agent.module.js';
+import { SkillsModule } from './skills/skills.module.js';
 
 @Module({
   imports: [
