@@ -6,8 +6,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npx nest build 2>&1 || (echo "BUILD FAILED" && exit 1)
-RUN test -f dist/main.js || (echo "dist/main.js not found" && ls -la dist/ 2>/dev/null && exit 1)
+RUN npm run build
 
 FROM node:22-alpine
 
