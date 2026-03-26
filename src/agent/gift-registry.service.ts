@@ -59,7 +59,8 @@ export class GiftRegistryService implements OnModuleInit {
           }),
         );
 
-        const items = data?.items || data?.collections || [];
+        const items =
+          data?.response?.items || data?.items || data?.collections || [];
         if (!Array.isArray(items) || items.length === 0) break;
 
         for (const item of items) {
@@ -70,7 +71,8 @@ export class GiftRegistryService implements OnModuleInit {
         }
 
         // Check for pagination cursor
-        after = data?.cursor || items[items.length - 1]?.cursor;
+        after =
+          data?.response?.cursor || data?.cursor || items[items.length - 1]?.cursor;
         if (!after || items.length < 100) break;
       }
 
