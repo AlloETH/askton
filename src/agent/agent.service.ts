@@ -18,10 +18,14 @@ interface SkillCall {
 
 export type OnStreamChunk = (accumulated: string) => void;
 
+/** Threshold in chars — if skill result is larger, use the full model */
+const LARGE_RESULT_THRESHOLD = 2000;
+
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private systemPrompt: string;
+  private hasFastModel = false;
 
   constructor(
     private config: ConfigService,
@@ -36,10 +40,10 @@ export class AgentService {
 
     const provider = this.config.get<string>('llmProvider')!;
     const modelId = this.config.get<string>('llmModel')!;
+    const fastModelId = this.config.get<string>('llmFastModel');
+
     const model = getModel(provider as any, modelId as any);
-    if (!model) {
-      throw new Error(`Unknown model: ${provider}/${modelId}`);
-    }
+    if (!model) throw new Error(`Unknown model: ${provider}/${modelId}`);
 
     const apiKey = getEnvApiKey(provider as any);
     if (!apiKey) {
@@ -49,7 +53,22 @@ export class AgentService {
       );
     }
 
-    this.logger.log(`LLM ready: ${provider}/${modelId}`);
+    if (fastModelId) {
+      const fast = getModel(provider as any, fastModelId as any);
+      if (fast) {
+        this.hasFastModel = true;
+        this.logger.log(
+          `LLM ready: fast=${provider}/${fastModelId} full=${provider}/${modelId}`,
+        );
+      } else {
+        this.logger.warn(
+          `Fast model "${fastModelId}" not found, using ${modelId} for all calls`,
+        );
+        this.logger.log(`LLM ready: ${provider}/${modelId}`);
+      }
+    } else {
+      this.logger.log(`LLM ready: ${provider}/${modelId} (no fast model set)`);
+    }
   }
 
   async run(
@@ -66,7 +85,8 @@ export class AgentService {
       },
     ];
 
-    let reply = await this.callLlm(messages, onChunk);
+    // First call: skill dispatch — use fast model (just picking a skill)
+    let reply = await this.callLlm(messages, undefined, 'fast');
     this.logger.log(`LLM reply: ${reply}`);
 
     for (let i = 0; i < 3; i++) {
@@ -93,12 +113,17 @@ export class AgentService {
           timestamp: Date.now(),
         } as UserMessage);
 
+        // Pick model tier based on result size:
+        // Small data → fast model can summarize it fine
+        // Large data → full model for better comprehension
+        const tier = resultStr.length > LARGE_RESULT_THRESHOLD ? 'full' : 'fast';
         const isLastIteration = i === 2;
         reply = await this.callLlm(
           messages,
           isLastIteration ? onChunk : undefined,
+          tier,
         );
-        this.logger.log(`LLM follow-up reply: ${reply}`);
+        this.logger.log(`LLM follow-up reply (${tier}): ${reply}`);
       } catch (err) {
         this.logger.error('Skill dispatch error', err);
         break;
@@ -151,7 +176,6 @@ export class AgentService {
     maxChars = 50000,
   ): string {
     let json = JSON.stringify(result, (key, value) => {
-      // Strip image/preview URLs — useless for the LLM
       if (
         typeof value === 'string' &&
         (key === 'image' ||
@@ -167,26 +191,44 @@ export class AgentService {
 
     if (json.length <= maxChars) return json;
 
-    // If still too long, try to trim array items
     const parsed: Record<string, unknown> = JSON.parse(json) as Record<
       string,
       unknown
     >;
-    for (const key of Object.keys(parsed)) {
-      const val = parsed[key];
+    this.trimLargeValues(parsed);
+    json = JSON.stringify(parsed);
+
+    if (json.length <= maxChars) return json;
+
+    return json.substring(0, maxChars) + '...(truncated)';
+  }
+
+  private trimLargeValues(obj: Record<string, unknown>): void {
+    for (const key of Object.keys(obj)) {
+      const val = obj[key];
+
       if (Array.isArray(val) && val.length > 25) {
         const original = val.length;
-        parsed[key] = [
-          ...(val as unknown[]).slice(0, 3),
-          { _truncated: `${original - 5} more items omitted` },
+        obj[key] = [
+          ...(val as unknown[]).slice(0, 25),
+          { _truncated: `${original - 25} more items omitted` },
         ];
-        json = JSON.stringify(parsed);
-        if (json.length <= maxChars) return json;
+      }
+
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
+        const keys = Object.keys(val as Record<string, unknown>);
+        if (keys.length > 20) {
+          const trimmed: Record<string, unknown> = {};
+          for (const k of keys.slice(0, 20)) {
+            trimmed[k] = (val as Record<string, unknown>)[k];
+          }
+          trimmed._truncated = `${keys.length - 20} more entries omitted`;
+          obj[key] = trimmed;
+        } else {
+          this.trimLargeValues(val as Record<string, unknown>);
+        }
       }
     }
-
-    // Hard truncate as last resort
-    return json.substring(0, maxChars) + '...(truncated)';
   }
 
   private makeAssistantMessage(text: string): AssistantMessage {
@@ -211,13 +253,32 @@ export class AgentService {
     };
   }
 
+  private resolveModel(tier: 'fast' | 'full') {
+    const provider = this.config.get<string>('llmProvider')!;
+    const fullModelId = this.config.get<string>('llmModel')!;
+    const fastModelId = this.config.get<string>('llmFastModel');
+
+    if (tier === 'fast' && this.hasFastModel && fastModelId) {
+      return {
+        model: getModel(provider as any, fastModelId as any),
+        modelId: fastModelId,
+        provider,
+      };
+    }
+
+    return {
+      model: getModel(provider as any, fullModelId as any),
+      modelId: fullModelId,
+      provider,
+    };
+  }
+
   private async callLlm(
     messages: Message[],
     onChunk?: OnStreamChunk,
+    tier: 'fast' | 'full' = 'full',
   ): Promise<string> {
-    const provider = this.config.get<string>('llmProvider')!;
-    const modelId = this.config.get<string>('llmModel')!;
-    const model = getModel(provider as any, modelId as any);
+    const { model, modelId, provider } = this.resolveModel(tier);
 
     const context: Context = {
       systemPrompt: this.systemPrompt,
@@ -230,7 +291,7 @@ export class AgentService {
     };
 
     this.logger.debug(
-      `Calling ${provider}/${modelId} messages=${messages.length} streaming=${!!onChunk}`,
+      `Calling ${provider}/${modelId} [${tier}] messages=${messages.length} streaming=${!!onChunk}`,
     );
 
     if (onChunk) {

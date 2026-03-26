@@ -3,6 +3,7 @@ export default () => ({
   botUsername: process.env.BOT_USERNAME || 'asktonbot',
   llmProvider: process.env.LLM_PROVIDER || 'anthropic',
   llmModel: process.env.LLM_MODEL || 'claude-sonnet-4-5',
+  llmFastModel: process.env.LLM_FAST_MODEL || '',
   telegramApiId: process.env.TELEGRAM_API_ID
     ? parseInt(process.env.TELEGRAM_API_ID, 10)
     : undefined,
