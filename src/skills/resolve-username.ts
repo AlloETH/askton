@@ -27,7 +27,11 @@ export async function resolveAddress(
 
   // .ton or .t.me domain — resolve directly
   if (input.endsWith('.ton') || input.endsWith('.t.me')) {
-    return resolveDomain(http, input, headers);
+    const resolved = await resolveDomain(http, input, headers);
+    if (resolved === input) {
+      throw new Error(`Domain "${input}" not found or has no linked wallet`);
+    }
+    return resolved;
   }
 
   // @username — try .ton then .t.me
