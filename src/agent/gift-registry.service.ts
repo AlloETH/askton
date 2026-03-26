@@ -57,20 +57,24 @@ export class GiftRegistryService implements OnModuleInit {
       }
 
       // Extract gift collection names from the response
-      // API returns { collection_floors: [...], models_prices: [...] }
+      // API returns { collection_floors: { "Gift Name": {...}, ... }, models_prices: [...] }
       const names: string[] = [];
       const raw = data.collection_floors ?? data.data ?? data.gifts ?? data.items ?? data;
-      const items = Array.isArray(raw) ? raw : typeof raw === 'object' ? Object.values(raw) : [];
 
-      for (const item of items) {
-        if (!item || typeof item !== 'object') continue;
-        const name =
-          (item as any).collection_name ||
-          (item as any).name ||
-          (item as any).gift_name ||
-          (item as any).title;
-        if (name && typeof name === 'string') {
-          names.push(name);
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        // Keys are the gift names themselves
+        names.push(...Object.keys(raw));
+      } else if (Array.isArray(raw)) {
+        for (const item of raw) {
+          if (!item || typeof item !== 'object') continue;
+          const name =
+            (item as any).collection_name ||
+            (item as any).name ||
+            (item as any).gift_name ||
+            (item as any).title;
+          if (name && typeof name === 'string') {
+            names.push(name);
+          }
         }
       }
 
@@ -79,8 +83,10 @@ export class GiftRegistryService implements OnModuleInit {
         this.giftNamesLower = this.giftNames.map((n) => n.toLowerCase());
         this.logger.log(`Gift registry loaded: ${this.giftNames.length} names`);
       } else {
+        const sampleKey = Object.keys(raw ?? {})[0];
+        const sampleVal = sampleKey ? JSON.stringify((raw as any)[sampleKey]).slice(0, 200) : 'empty';
         this.logger.warn(
-          `Gift registry: API returned data but no names extracted. Top-level keys: ${Object.keys(data).join(', ')}`,
+          `Gift registry: no names extracted. collection_floors type=${Array.isArray(raw) ? 'array' : typeof raw}, sample: ${sampleKey}=${sampleVal}`,
         );
       }
     } catch (err) {
