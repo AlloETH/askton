@@ -74,6 +74,24 @@ function writeCredentials(creds: OAuthCredentials): void {
   }
 }
 
+async function doRefresh(
+  creds: OAuthCredentials,
+): Promise<OAuthCredentials> {
+  const refresh = await loadRefreshFn();
+  const result = await refresh(creds.refreshToken);
+
+  const newCreds: OAuthCredentials = {
+    accessToken: result.accessToken || result.access_token || '',
+    refreshToken:
+      result.refreshToken || result.refresh_token || creds.refreshToken,
+    expiresAt:
+      result.expiresAt || Date.now() + (result.expires_in || 3600) * 1000,
+  };
+
+  writeCredentials(newCreds);
+  return newCreds;
+}
+
 /**
  * Get a valid Anthropic API key, refreshing the OAuth token if needed.
  * Reads from Claude Code's ~/.claude/.credentials.json
@@ -91,33 +109,46 @@ export async function getAnthropicApiKey(
     );
   }
 
-  // Token still valid (with 60s buffer)
-  if (Date.now() < creds.expiresAt - 60000) {
+  // Token still valid (with 5 min buffer)
+  if (Date.now() < creds.expiresAt - 300_000) {
     return creds.accessToken;
   }
 
-  // Token expired — refresh
+  // Token expired or expiring soon — refresh
   logger.log('Claude OAuth token expired, refreshing...');
 
   try {
-    const refresh = await loadRefreshFn();
-    const result = await refresh(creds.refreshToken);
-
-    const newCreds: OAuthCredentials = {
-      accessToken: result.accessToken || result.access_token || '',
-      refreshToken:
-        result.refreshToken || result.refresh_token || creds.refreshToken,
-      expiresAt:
-        result.expiresAt || Date.now() + (result.expires_in || 3600) * 1000,
-    };
-
-    writeCredentials(newCreds);
+    const newCreds = await doRefresh(creds);
     logger.log('Claude OAuth token refreshed successfully');
-
     return newCreds.accessToken;
   } catch (err) {
     logger.error(`Failed to refresh token: ${err}`);
-    // Return the old token — it might still work briefly
     return creds.accessToken;
   }
+}
+
+/**
+ * Start a background timer that proactively refreshes the token
+ * every 30 minutes so it never expires between requests.
+ */
+export function startCredentialRefreshTimer(): void {
+  const INTERVAL = 30 * 60 * 1000; // 30 minutes
+
+  setInterval(async () => {
+    const creds = readCredentials();
+    if (!creds?.refreshToken) return;
+
+    // Refresh if token expires within the next 45 minutes
+    if (Date.now() > creds.expiresAt - 45 * 60 * 1000) {
+      logger.log('Proactive token refresh triggered');
+      try {
+        await doRefresh(creds);
+        logger.log('Proactive token refresh succeeded');
+      } catch (err) {
+        logger.error(`Proactive token refresh failed: ${err}`);
+      }
+    }
+  }, INTERVAL);
+
+  logger.log('Credential refresh timer started (every 30m)');
 }

@@ -4,7 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { SkillsService } from '../skills/skills.service';
 import { buildSystemPrompt } from './agent.prompts';
-import { getAnthropicApiKey } from './claude-credentials';
+import {
+  getAnthropicApiKey,
+  startCredentialRefreshTimer,
+} from './claude-credentials';
 
 interface SkillCall {
   skill: string;
@@ -69,6 +72,7 @@ export class AgentService {
       await loadPiAi();
       // Verify we can get a key (from env or ~/.claude/.credentials.json)
       await getAnthropicApiKey(this.config.get<string>('anthropicApiKey'));
+      startCredentialRefreshTimer();
       this.logger.log('pi-ai loaded for Claude provider');
     }
   }
