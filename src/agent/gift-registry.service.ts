@@ -57,13 +57,18 @@ export class GiftRegistryService implements OnModuleInit {
       }
 
       // Extract gift collection names from the response
+      // The API may return various structures — try all known shapes
       const names: string[] = [];
-      const items = Array.isArray(data) ? data : data.data || data.gifts || data.items || [];
-      for (const item of Array.isArray(items) ? items : Object.values(items)) {
+      const raw = data.data ?? data.gifts ?? data.items ?? data;
+      const items = Array.isArray(raw) ? raw : typeof raw === 'object' ? Object.values(raw) : [];
+
+      for (const item of items) {
+        if (!item || typeof item !== 'object') continue;
         const name =
-          (item as any)?.collection_name ||
-          (item as any)?.name ||
-          (item as any)?.gift_name;
+          (item as any).collection_name ||
+          (item as any).name ||
+          (item as any).gift_name ||
+          (item as any).title;
         if (name && typeof name === 'string') {
           names.push(name);
         }
@@ -73,6 +78,10 @@ export class GiftRegistryService implements OnModuleInit {
         this.giftNames = [...new Set(names)];
         this.giftNamesLower = this.giftNames.map((n) => n.toLowerCase());
         this.logger.log(`Gift registry loaded: ${this.giftNames.length} names`);
+      } else {
+        this.logger.warn(
+          `Gift registry: API returned data but no names extracted. Top-level keys: ${Object.keys(data).join(', ')}`,
+        );
       }
     } catch (err) {
       this.logger.warn('Gift registry refresh failed: ' + (err as Error).message);
