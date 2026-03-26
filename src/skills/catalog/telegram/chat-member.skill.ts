@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator';
+import { MtprotoService } from '../../../telegram/mtproto.service';
 
 @Skill({
   name: 'check_chat_member',
@@ -15,6 +16,7 @@ export class ChatMemberSkill implements SkillHandler {
   constructor(
     private http: HttpService,
     private config: ConfigService,
+    private mtproto: MtprotoService,
   ) {
     this.token = this.config.get<string>('telegramToken')!;
   }
@@ -26,16 +28,25 @@ export class ChatMemberSkill implements SkillHandler {
       return { error: 'Missing chat and user parameters' };
     }
 
+    // Resolve user ID — try MTProto first for @username
     const chatId = chat.startsWith('@') ? chat : Number(chat);
-    const userId = user.startsWith('@') ? user : Number(user);
+    let resolvedUserId: string | number = user.startsWith('@')
+      ? user
+      : Number(user);
 
-    // If username provided for user, resolve it first
-    let resolvedUserId = userId;
-    if (typeof userId === 'string') {
+    if (typeof resolvedUserId === 'string' && this.mtproto.isReady()) {
+      const mtUser = await this.mtproto.getUserFullInfo(resolvedUserId);
+      if (mtUser?.id) {
+        resolvedUserId = Number(mtUser.id);
+      }
+    }
+
+    // If still a string, try Bot API to resolve
+    if (typeof resolvedUserId === 'string') {
       try {
         const { data: userData } = await firstValueFrom(
           this.http.get(`https://api.telegram.org/bot${this.token}/getChat`, {
-            params: { chat_id: userId },
+            params: { chat_id: resolvedUserId },
             timeout: 5000,
           }),
         );

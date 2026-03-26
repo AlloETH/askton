@@ -37,29 +37,13 @@ export class DnsLookupSkill implements SkillHandler {
 
     const fullDomain = domain + '.ton';
 
-    // Try to resolve the domain
+    // First, get domain NFT info
+    let domainInfo: any = null;
     try {
       const { data } = await firstValueFrom(
         this.http.get(`https://tonapi.io/v2/dns/${fullDomain}`, { headers }),
       );
-
-      // Domain exists and is owned (has wallet resolution or NFT item)
-      if (data.wallet?.address || data.item?.address) {
-        return {
-          domain: fullDomain,
-          status: 'owned',
-          walletAddress:
-            data.wallet?.address || data.item?.owner?.address || null,
-          nftAddress: data.item?.address || null,
-          ownerAddress: data.item?.owner?.address || null,
-          expiresAt: data.expiring_at
-            ? new Date(data.expiring_at * 1000).toISOString()
-            : null,
-        };
-      }
-
-      // Domain exists but in auction
-      return await this.checkAuction(domain, fullDomain, headers);
+      domainInfo = data;
     } catch (err: any) {
       const status = err?.response?.status;
 
@@ -76,6 +60,34 @@ export class DnsLookupSkill implements SkillHandler {
 
       return await this.checkAuction(domain, fullDomain, headers);
     }
+
+    // Domain exists — resolve DNS records to get the wallet it points to
+    let walletAddress: string | null = null;
+    try {
+      const { data: resolved } = await firstValueFrom(
+        this.http.get(`https://tonapi.io/v2/dns/${fullDomain}/resolve`, {
+          headers,
+        }),
+      );
+      walletAddress = resolved.wallet?.address || null;
+    } catch {
+      // Domain exists but has no wallet record configured
+    }
+
+    if (domainInfo.item?.address) {
+      return {
+        domain: fullDomain,
+        status: 'owned',
+        walletAddress,
+        nftAddress: domainInfo.item?.address || null,
+        ownerAddress: domainInfo.item?.owner?.address || null,
+        expiresAt: domainInfo.expiring_at
+          ? new Date(domainInfo.expiring_at * 1000).toISOString()
+          : null,
+      };
+    }
+
+    return await this.checkAuction(domain, fullDomain, headers);
   }
 
   private async checkAuction(

@@ -1,6 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator';
+import { MtprotoService } from '../../../telegram/mtproto.service';
 
 @Skill({
   name: 'check_telegram_username',
@@ -9,7 +10,10 @@ import { Skill, SkillHandler } from '../../skill.decorator';
   example: { username: 'durov' },
 })
 export class UsernameCheckSkill implements SkillHandler {
-  constructor(private http: HttpService) {}
+  constructor(
+    private http: HttpService,
+    private mtproto: MtprotoService,
+  ) {}
 
   async execute(input: any): Promise<any> {
     const username: string = (input.username || '').replace(/^@/, '').trim();
@@ -24,7 +28,13 @@ export class UsernameCheckSkill implements SkillHandler {
       };
     }
 
-    // Try to fetch the t.me profile page
+    // Try MTProto first — definitive answer
+    if (this.mtproto.isReady()) {
+      const result = await this.mtproto.checkUsername(username);
+      if (result) return result;
+    }
+
+    // Fallback: scrape t.me profile page
     try {
       const { data: html } = await firstValueFrom(
         this.http.get<string>(`https://t.me/${username}`, {
@@ -36,7 +46,6 @@ export class UsernameCheckSkill implements SkillHandler {
 
       const body = typeof html === 'string' ? html : String(html);
 
-      // Check if profile exists
       const nameMatch = body.match(
         /<div class="tgme_page_title">\s*<span[^>]*>(.*?)<\/span>/s,
       );
@@ -56,29 +65,13 @@ export class UsernameCheckSkill implements SkillHandler {
           ? membersMatch[1].replace(/<[^>]*>/g, '').trim()
           : null;
 
-        // Determine type
         let type = 'user';
         if (extra?.includes('subscriber')) type = 'channel';
         else if (extra?.includes('member')) type = 'group';
         else if (extra?.includes('online')) type = 'group';
         else if (body.includes('tgme_page_action_button')) type = 'bot';
 
-        return {
-          username,
-          taken: true,
-          name,
-          description,
-          type,
-          extra,
-        };
-      }
-
-      // No profile found — check for "you can claim" text
-      if (
-        body.includes('you can claim') ||
-        body.includes('If you have Telegram') === false
-      ) {
-        return { username, taken: false, available: true };
+        return { username, taken: true, name, description, type, extra };
       }
 
       return { username, taken: false, available: true };

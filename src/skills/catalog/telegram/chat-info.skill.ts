@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator';
+import { MtprotoService } from '../../../telegram/mtproto.service';
 
 @Skill({
   name: 'get_chat_info',
@@ -15,6 +16,7 @@ export class ChatInfoSkill implements SkillHandler {
   constructor(
     private http: HttpService,
     private config: ConfigService,
+    private mtproto: MtprotoService,
   ) {
     this.token = this.config.get<string>('telegramToken')!;
   }
@@ -23,6 +25,13 @@ export class ChatInfoSkill implements SkillHandler {
     const chat: string = input.chat || input.chat_id || input.username;
     if (!chat) return { error: 'Missing chat ID or @username' };
 
+    // Try MTProto first
+    if (this.mtproto.isReady() && typeof chat === 'string') {
+      const result = await this.mtproto.getChannelFullInfo(chat);
+      if (result) return result;
+    }
+
+    // Fallback to Bot API
     const chatId = chat.startsWith('@') ? chat : Number(chat);
 
     const { data } = await firstValueFrom(
@@ -38,7 +47,6 @@ export class ChatInfoSkill implements SkillHandler {
 
     const c = data.result;
 
-    // Try to get member count
     let memberCount: number | null = null;
     try {
       const { data: countData } = await firstValueFrom(
@@ -57,7 +65,7 @@ export class ChatInfoSkill implements SkillHandler {
       type: c.type,
       title: c.title || null,
       username: c.username || null,
-      description: c.description || null,
+      about: c.description || null,
       memberCount,
       inviteLink: c.invite_link || null,
       hasVisibleHistory: c.has_visible_history ?? null,

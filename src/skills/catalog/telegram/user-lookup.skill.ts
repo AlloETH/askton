@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator';
+import { MtprotoService } from '../../../telegram/mtproto.service';
 
 @Skill({
   name: 'lookup_telegram_user',
@@ -16,6 +17,7 @@ export class UserLookupSkill implements SkillHandler {
   constructor(
     private http: HttpService,
     private config: ConfigService,
+    private mtproto: MtprotoService,
   ) {
     this.token = this.config.get<string>('telegramToken')!;
     this.apiKey = this.config.get<string>('tonapiKey')!;
@@ -25,9 +27,22 @@ export class UserLookupSkill implements SkillHandler {
     const user: string = input.user || input.user_id || input.username;
     if (!user) return { error: 'Missing user ID or @username' };
 
-    const chatId = user.startsWith('@') ? user : Number(user);
+    const isUsername = typeof user === 'string' && user.startsWith('@');
 
-    // Try Telegram Bot API first
+    // Try MTProto first (can resolve any username)
+    if (isUsername && this.mtproto.isReady()) {
+      const result = await this.mtproto.getUserFullInfo(user);
+      if (result) {
+        // Also try to get TON wallet via DNS
+        const tonWallet = await this.resolveViaTonDns(user.replace(/^@/, ''));
+        if (tonWallet) result.tonWalletAddress = tonWallet;
+        return result;
+      }
+    }
+
+    // Fall back to Bot API
+    const chatId = isUsername ? user : Number(user);
+
     try {
       const { data } = await firstValueFrom(
         this.http.get(`https://api.telegram.org/bot${this.token}/getChat`, {
@@ -67,17 +82,17 @@ export class UserLookupSkill implements SkillHandler {
         };
       }
     } catch {
-      // getChat failed — user hasn't interacted with bot
+      // getChat failed
     }
 
-    // Fallback: try resolving via TON DNS to get at least wallet info
-    if (typeof chatId === 'string') {
-      const username = chatId.replace(/^@/, '');
+    // Last resort: try TON DNS
+    if (isUsername) {
+      const username = user.replace(/^@/, '');
       const tonWallet = await this.resolveViaTonDns(username);
       if (tonWallet) {
         return {
           username,
-          note: 'User has not interacted with the bot, so full Telegram profile is unavailable. TON wallet found via DNS.',
+          note: 'Full Telegram profile unavailable. TON wallet found via DNS.',
           tonWalletAddress: tonWallet,
         };
       }
@@ -85,7 +100,7 @@ export class UserLookupSkill implements SkillHandler {
 
     return {
       error:
-        'User not found. The bot can only look up users who have interacted with it, or who have a .ton/.t.me domain.',
+        'User not found. MTProto may not be configured, and the bot has not seen this user.',
     };
   }
 
@@ -95,15 +110,14 @@ export class UserLookupSkill implements SkillHandler {
     for (const suffix of ['.ton', '.t.me']) {
       try {
         const { data } = await firstValueFrom(
-          this.http.get(`https://tonapi.io/v2/dns/${username}${suffix}`, {
-            headers,
-            timeout: 10000,
-          }),
+          this.http.get(
+            `https://tonapi.io/v2/dns/${username}${suffix}/resolve`,
+            { headers, timeout: 10000 },
+          ),
         );
         if (data.wallet?.address) return data.wallet.address as string;
-        if (data.item?.owner?.address) return data.item.owner.address as string;
       } catch {
-        // not found
+        // not found or no wallet record
       }
     }
 

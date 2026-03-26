@@ -2,11 +2,12 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator';
+import { MtprotoService } from '../../../telegram/mtproto.service';
 
 @Skill({
   name: 'get_channel_info',
   description:
-    'get detailed Telegram channel or group stats — member count, description, type, linked discussion group',
+    'get detailed Telegram channel or group stats — member count, description, type, linked discussion group, admin count, online count',
   example: { channel: '@tabordigital' },
 })
 export class ChannelStatsSkill implements SkillHandler {
@@ -15,6 +16,7 @@ export class ChannelStatsSkill implements SkillHandler {
   constructor(
     private http: HttpService,
     private config: ConfigService,
+    private mtproto: MtprotoService,
   ) {
     this.token = this.config.get<string>('telegramToken')!;
   }
@@ -24,6 +26,13 @@ export class ChannelStatsSkill implements SkillHandler {
       input.channel || input.chat || input.username || input.chat_id;
     if (!channel) return { error: 'Missing channel @username or ID' };
 
+    // Try MTProto first
+    if (this.mtproto.isReady() && typeof channel === 'string') {
+      const result = await this.mtproto.getChannelFullInfo(channel);
+      if (result) return result;
+    }
+
+    // Fallback to Bot API
     const chatId = channel.startsWith('@') ? channel : Number(channel);
 
     const { data } = await firstValueFrom(
@@ -56,7 +65,6 @@ export class ChannelStatsSkill implements SkillHandler {
       // may fail if bot isn't a member
     }
 
-    // Try to get admins
     let adminCount: number | null = null;
     try {
       const { data: adminData } = await firstValueFrom(
@@ -75,7 +83,7 @@ export class ChannelStatsSkill implements SkillHandler {
       type: c.type,
       title: c.title || null,
       username: c.username || null,
-      description: c.description || null,
+      about: c.description || null,
       memberCount,
       adminCount,
       inviteLink: c.invite_link || null,

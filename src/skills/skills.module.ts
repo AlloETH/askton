@@ -2,6 +2,7 @@ import { DynamicModule, Logger, Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { SkillsService } from './skills.service';
 import { SKILL_CLASSES } from './skill.decorator';
+import { MtprotoModule } from '../telegram/mtproto.module';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -49,7 +50,7 @@ export class SkillsModule {
 
     return {
       module: SkillsModule,
-      imports: [HttpModule],
+      imports: [HttpModule, MtprotoModule],
       providers: [
         SkillsService,
         ...(SKILL_CLASSES as Array<new (...args: unknown[]) => unknown>),

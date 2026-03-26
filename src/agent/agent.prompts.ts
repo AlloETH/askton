@@ -23,10 +23,13 @@ Pick the MOST SPECIFIC skill that matches the query:
 - User asks about staking APY/pools → get_staking_pools
 - User asks about a .ton domain → get_dns_info
 - User asks "what's trending" → get_trending_jettons
+- User asks about a wallet's NFTs (not gifts) → get_account_nfts
 - User asks about a Telegram user/profile → lookup_telegram_user
 - User asks about a channel or group → get_channel_info or get_chat_info
 - User asks if a @username is taken → check_telegram_username
 - User asks if someone is in a group → check_chat_member
+- User asks about recent posts in a channel → get_channel_messages
+- User asks to search/find Telegram channels or groups → search_telegram
 
 Available skills:
 

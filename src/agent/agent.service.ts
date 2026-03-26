@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { SkillsService } from '../skills/skills.service';
 import { buildSystemPrompt } from './agent.prompts';
+import { getAnthropicApiKey } from './claude-credentials';
 
 interface SkillCall {
   skill: string;
@@ -65,13 +66,9 @@ export class AgentService {
     this.logger.log('System prompt built with registered skills');
 
     if (this.provider === 'claude') {
-      const apiKey = this.config.get<string>('anthropicApiKey');
-      if (!apiKey) {
-        throw new Error(
-          'ANTHROPIC_API_KEY is required when LLM_PROVIDER=claude',
-        );
-      }
       await loadPiAi();
+      // Verify we can get a key (from env or ~/.claude/.credentials.json)
+      await getAnthropicApiKey(this.config.get<string>('anthropicApiKey'));
       this.logger.log('pi-ai loaded for Claude provider');
     }
   }
@@ -236,8 +233,11 @@ export class AgentService {
       systemPrompt: systemMsg?.content || '',
       messages: chatMessages,
     };
+    const apiKey = await getAnthropicApiKey(
+      this.config.get<string>('anthropicApiKey'),
+    );
     const options = {
-      apiKey: this.config.get<string>('anthropicApiKey'),
+      apiKey,
       maxTokens: 512,
       temperature: 0.9,
     };

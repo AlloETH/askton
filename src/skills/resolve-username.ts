@@ -1,13 +1,13 @@
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 
-interface DnsResponse {
+interface DnsResolveResponse {
   wallet?: { address?: string };
-  item?: { owner?: { address?: string } };
 }
 
 /**
  * Resolve a Telegram @username to a TON wallet address.
+ * Uses the /resolve endpoint to get the actual DNS resolution target.
  * Tries .ton domain first, then .t.me as fallback.
  */
 export async function resolveUsername(
@@ -18,27 +18,25 @@ export async function resolveUsername(
   // Try .ton domain first
   try {
     const { data } = await firstValueFrom(
-      http.get<DnsResponse>(`https://tonapi.io/v2/dns/${username}.ton`, {
-        headers,
-        timeout: 10000,
-      }),
+      http.get<DnsResolveResponse>(
+        `https://tonapi.io/v2/dns/${username}.ton/resolve`,
+        { headers, timeout: 10000 },
+      ),
     );
     if (data.wallet?.address) return data.wallet.address;
-    if (data.item?.owner?.address) return data.item.owner.address;
   } catch {
-    // .ton domain not found
+    // .ton domain not found or no wallet record
   }
 
   // Fallback to .t.me
   try {
     const { data } = await firstValueFrom(
-      http.get<DnsResponse>(`https://tonapi.io/v2/dns/${username}.t.me`, {
-        headers,
-        timeout: 10000,
-      }),
+      http.get<DnsResolveResponse>(
+        `https://tonapi.io/v2/dns/${username}.t.me/resolve`,
+        { headers, timeout: 10000 },
+      ),
     );
     if (data.wallet?.address) return data.wallet.address;
-    if (data.item?.owner?.address) return data.item.owner.address;
   } catch {
     // .t.me not found either
   }
