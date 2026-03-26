@@ -4,10 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { SkillsService } from '../skills/skills.service';
 import { buildSystemPrompt } from './agent.prompts';
-import {
-  getAnthropicApiKey,
-  startCredentialRefreshTimer,
-} from './claude-credentials';
 
 interface SkillCall {
   skill: string;
@@ -19,76 +15,36 @@ interface LlmMessage {
   content: string;
 }
 
-// Lazy-loaded pi-ai module (ESM-only, must bypass TS import→require transform)
-let piAi: {
-  complete: typeof import('@mariozechner/pi-ai').complete;
-  stream: typeof import('@mariozechner/pi-ai').stream;
-  getModel: typeof import('@mariozechner/pi-ai').getModel;
-} | null = null;
-
-// Prevent TypeScript from compiling import() to require() for ESM packages
-// eslint-disable-next-line @typescript-eslint/no-implied-eval
-const dynamicImport = new Function('specifier', 'return import(specifier)') as (
-  specifier: string,
-) => Promise<typeof import('@mariozechner/pi-ai')>;
-
-async function loadPiAi() {
-  if (!piAi) {
-    const mod = await dynamicImport('@mariozechner/pi-ai');
-    piAi = {
-      complete: mod.complete,
-      stream: mod.stream,
-      getModel: mod.getModel,
-    };
-  }
-  return piAi;
-}
-
-export type OnStreamChunk = (accumulated: string) => void;
-
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private systemPrompt: string;
-  private readonly provider: string;
   private lastRapidApiCall = 0;
 
   constructor(
     private http: HttpService,
     private config: ConfigService,
     private skillsService: SkillsService,
-  ) {
-    this.provider = this.config.get<string>('llmProvider') || 'rapidapi';
-    this.logger.log(`Using ${this.provider} as LLM provider`);
-  }
+  ) {}
 
   async onModuleInit() {
     this.systemPrompt = buildSystemPrompt(
       this.skillsService.getSkillPromptBlock(),
     );
     this.logger.log('System prompt built with registered skills');
-
-    if (this.provider === 'claude') {
-      await loadPiAi();
-      // Verify we can get a key (from env or ~/.claude/.credentials.json)
-      await getAnthropicApiKey(this.config.get<string>('anthropicApiKey'));
-      startCredentialRefreshTimer();
-      this.logger.log('pi-ai loaded for Claude provider');
-    }
   }
 
   async run(
     query: string,
     groupId: string,
     username: string,
-    onChunk?: OnStreamChunk,
   ): Promise<string> {
     const messages: LlmMessage[] = [
       { role: 'system', content: this.systemPrompt },
       { role: 'user', content: `${username} asks: ${query}` },
     ];
 
-    let reply = await this.callLlm(messages, onChunk);
+    let reply = await this.callRapidApi(messages);
     this.logger.log(`LLM reply: ${reply}`);
 
     for (let i = 0; i < 3; i++) {
@@ -116,12 +72,7 @@ export class AgentService {
           content: 'Data result: ' + JSON.stringify(skillResult),
         });
 
-        // Stream only the final response to the user, not intermediate skill calls
-        const isLastIteration = i === 2 || !this.extractSkillJson(reply);
-        reply = await this.callLlm(
-          messages,
-          isLastIteration ? onChunk : undefined,
-        );
+        reply = await this.callRapidApi(messages);
         this.logger.log(`LLM follow-up reply: ${reply}`);
       } catch (err) {
         this.logger.error('Skill dispatch error', err);
@@ -167,109 +118,6 @@ export class AgentService {
     }
 
     return null;
-  }
-
-  private async callLlm(
-    messages: LlmMessage[],
-    onChunk?: OnStreamChunk,
-  ): Promise<string> {
-    if (this.provider === 'claude') {
-      return this.callClaude(messages, onChunk);
-    }
-    return this.callRapidApi(messages);
-  }
-
-  private async callClaude(
-    messages: LlmMessage[],
-    onChunk?: OnStreamChunk,
-  ): Promise<string> {
-    const { stream, complete, getModel } = await loadPiAi();
-
-    const modelId =
-      this.config.get<string>('anthropicModel') || 'claude-sonnet-4-5';
-
-    const systemMsg = messages.find((m) => m.role === 'system');
-    const chatMessages = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => {
-        if (m.role === 'assistant') {
-          return {
-            role: 'assistant' as const,
-            content: [{ type: 'text' as const, text: m.content }],
-            api: 'anthropic-messages' as const,
-            provider: 'anthropic' as const,
-            model: modelId,
-            usage: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              totalTokens: 0,
-              cost: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                total: 0,
-              },
-            },
-            stopReason: 'stop' as const,
-            timestamp: Date.now(),
-          };
-        }
-        return {
-          role: 'user' as const,
-          content: m.content,
-          timestamp: Date.now(),
-        };
-      });
-
-    this.logger.debug(
-      `Calling Claude model=${modelId} messages=${chatMessages.length} streaming=${!!onChunk}`,
-    );
-
-    const model = getModel('anthropic', modelId as any);
-    if (!model) {
-      throw new Error(`Unknown Anthropic model: ${modelId}`);
-    }
-
-    const context = {
-      systemPrompt: systemMsg?.content || '',
-      messages: chatMessages,
-    };
-    const apiKey = await getAnthropicApiKey(
-      this.config.get<string>('anthropicApiKey'),
-    );
-    const options = {
-      apiKey,
-      maxTokens: 512,
-      temperature: 0.9,
-    };
-
-    // Use streaming when a chunk callback is provided
-    if (onChunk) {
-      const eventStream = stream(model, context, options);
-      let accumulated = '';
-
-      for await (const event of eventStream) {
-        if (event.type === 'text_delta') {
-          accumulated += event.delta;
-          onChunk(accumulated);
-        }
-      }
-
-      return accumulated || 'Sorry, I got no response.';
-    }
-
-    // Non-streaming fallback
-    const result = await complete(model, context, options);
-
-    const text = result.content
-      .filter((c) => c.type === 'text')
-      .map((c) => (c as { type: 'text'; text: string }).text)
-      .join('');
-
-    return text || 'Sorry, I got no response.';
   }
 
   private async rateLimitRapidApi(): Promise<void> {

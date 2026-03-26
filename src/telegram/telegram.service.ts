@@ -105,7 +105,6 @@ export class TelegramService {
         query,
         groupId,
         username,
-        (accumulated) => scheduleEdit(accumulated),
       );
 
       // Final edit with complete text + Markdown
