@@ -97,6 +97,17 @@ export class AgentService {
     let reply = await this.callLlm(messages, undefined, 'full', 0.3);
     this.logger.log(`LLM reply: ${reply}`);
 
+    // If no skill was matched, the question might need web search — retry with it enabled
+    if (
+      !this.extractSkillJson(reply) &&
+      reply !== 'Sorry, I got no response.'
+    ) {
+      const webReply = await this.callLlm(messages, onChunk, 'full', 0.7, true);
+      if (webReply && webReply !== 'Sorry, I got no response.') {
+        return webReply;
+      }
+    }
+
     for (let i = 0; i < 3; i++) {
       const skillCall = this.extractSkillJson(reply);
       if (!skillCall) break;
@@ -280,6 +291,7 @@ export class AgentService {
     onChunk?: OnStreamChunk,
     tier: 'fast' | 'full' = 'full',
     temperature = 0.9,
+    webSearch = false,
   ): Promise<string> {
     const { model, modelId, provider } = this.resolveModel(tier);
 
@@ -287,11 +299,14 @@ export class AgentService {
       systemPrompt: this.systemPrompt,
       messages,
     };
-    const options = {
+    const options: Record<string, any> = {
       apiKey: getEnvApiKey(provider as any),
       maxTokens: model.maxTokens,
       temperature,
-      onPayload: (payload: any) => {
+    };
+
+    if (webSearch) {
+      options.onPayload = (payload: any) => {
         if (!payload.tools) payload.tools = [];
         payload.tools.push({
           type: 'function',
@@ -312,8 +327,8 @@ export class AgentService {
         });
         if (!payload.tool_choice) payload.tool_choice = 'auto';
         return payload;
-      },
-    };
+      };
+    }
 
     this.logger.debug(
       `Calling ${provider}/${modelId} [${tier}] messages=${messages.length} streaming=${!!onChunk}`,
