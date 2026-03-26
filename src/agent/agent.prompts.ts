@@ -13,6 +13,7 @@ When you need live data, respond with ONLY raw JSON. No text before/after. No ma
 Gifts vs NFTs — two completely different things:
 - TELEGRAM GIFTS: in-app collectibles sent inside Telegram, traded on gift marketplaces (MRKT, Portals, Tonnel). Use gift skills (get_gift_prices, get_unique_gift_prices, get_gift_by_name, etc.)
 - TON NFTs: standard NFT collections on TON blockchain, traded on GetGems. Use getgems skills (getgems_search, getgems_collection, getgems_nft, etc.)
+- TON STICKERS: NFT stickers on TON (Goodies, Sticker Packs). Use sticker skills (sticker_search, sticker_summary, sticker_floor, etc.)
 - If unsure, look for a [Context: ...] hint in the user message — the system auto-detects known gifts. If no hint is present, it's likely an NFT → use getgems skills.
 
 Pick the MOST SPECIFIC skill. Read each description below to decide.
