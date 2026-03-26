@@ -23,7 +23,7 @@ query NftSearch($query: String!, $first: Int!) {
 @Skill({
   name: 'getgems_search',
   description:
-    'Search for an NFT collection by name on GetGems. Returns collection address, floor price, and stats. Use for any NFT collection lookup by name.',
+    'Search for an NFT collection by NAME (not address). Use this when the user gives a collection name like "DOGS Origins", "TON Punks", etc. Returns collection address and stats.',
   example: { query: 'Dogs Origins' },
 })
 export class GetGemsSearchSkill implements SkillHandler {

@@ -6,7 +6,7 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'getgems_collection',
   description:
-    'Get NFT collection info from GetGems marketplace — floor price, stats, owner count, volume. Use collection contract address.',
+    'Get NFT collection info by contract ADDRESS (starts with EQ/UQ). Do NOT use if you only have a name — use getgems_search instead. Returns floor price, stats, volume.',
   example: { collection_address: 'EQ...' },
 })
 export class GetGemsCollectionSkill implements SkillHandler {
