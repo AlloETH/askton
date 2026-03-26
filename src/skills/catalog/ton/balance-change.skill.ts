@@ -2,7 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
-import { resolveUsername } from '../../resolve-username.js';
+import { resolveAddress } from '../../resolve-username.js';
 
 @Skill({
   name: 'get_balance_change',
@@ -30,10 +30,7 @@ export class BalanceChangeSkill implements SkillHandler {
 
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
-    let resolved = address;
-    if (address.startsWith('@')) {
-      resolved = await resolveUsername(this.http, address.slice(1), headers);
-    }
+    const resolved = await resolveAddress(this.http, address, headers);
 
     const startDate = input.start_date
       ? Math.floor(new Date(input.start_date).getTime() / 1000)

@@ -2,7 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
-import { resolveUsername } from '../../resolve-username.js';
+import { resolveAddress } from '../../resolve-username.js';
 
 @Skill({
   name: 'get_account_nfts',
@@ -27,10 +27,7 @@ export class AccountNftsSkill implements SkillHandler {
     const limit = Math.min(Math.max(input.limit || 20, 1), 100);
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
-    let resolved = address;
-    if (address.startsWith('@')) {
-      resolved = await resolveUsername(this.http, address.slice(1), headers);
-    }
+    const resolved = await resolveAddress(this.http, address, headers);
 
     const { data } = await firstValueFrom(
       this.http.get(
