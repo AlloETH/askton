@@ -57,9 +57,9 @@ export class GiftRegistryService implements OnModuleInit {
       }
 
       // Extract gift collection names from the response
-      // The API may return various structures — try all known shapes
+      // API returns { collection_floors: [...], models_prices: [...] }
       const names: string[] = [];
-      const raw = data.data ?? data.gifts ?? data.items ?? data;
+      const raw = data.collection_floors ?? data.data ?? data.gifts ?? data.items ?? data;
       const items = Array.isArray(raw) ? raw : typeof raw === 'object' ? Object.values(raw) : [];
 
       for (const item of items) {
