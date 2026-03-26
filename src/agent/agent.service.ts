@@ -85,8 +85,8 @@ export class AgentService {
       },
     ];
 
-    // First call: skill dispatch — use fast model (just picking a skill)
-    let reply = await this.callLlm(messages, undefined, 'fast');
+    // First call: skill dispatch — use full model (needs to understand intent)
+    let reply = await this.callLlm(messages, undefined, 'full');
     this.logger.log(`LLM reply: ${reply}`);
 
     for (let i = 0; i < 3; i++) {
