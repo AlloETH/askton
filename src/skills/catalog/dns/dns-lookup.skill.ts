@@ -48,8 +48,10 @@ export class DnsLookupSkill implements SkillHandler {
         return {
           domain: fullDomain,
           status: 'owned',
-          walletAddress: data.wallet?.address || null,
+          walletAddress:
+            data.wallet?.address || data.item?.owner?.address || null,
           nftAddress: data.item?.address || null,
+          ownerAddress: data.item?.owner?.address || null,
           expiresAt: data.expiring_at
             ? new Date(data.expiring_at * 1000).toISOString()
             : null,

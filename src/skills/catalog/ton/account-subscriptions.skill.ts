@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator';
+import { resolveUsername } from '../../resolve-username';
 
 @Skill({
   name: 'get_account_subscriptions',
@@ -27,11 +28,7 @@ export class AccountSubscriptionsSkill implements SkillHandler {
 
     let resolved = address;
     if (address.startsWith('@')) {
-      const dns = address.slice(1) + '.t.me';
-      const { data } = await firstValueFrom(
-        this.http.get(`https://tonapi.io/v2/dns/${dns}/resolve`, { headers }),
-      );
-      resolved = data.wallet?.address || address;
+      resolved = await resolveUsername(this.http, address.slice(1), headers);
     }
 
     const { data } = await firstValueFrom(
