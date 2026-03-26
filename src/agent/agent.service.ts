@@ -181,7 +181,7 @@ export class AgentService {
   /** Strip image URLs and truncate skill results to avoid exceeding context */
   private truncateResult(
     result: Record<string, unknown>,
-    maxChars = 50000,
+    maxChars = 200000,
   ): string {
     let json = JSON.stringify(result, (key, value) => {
       if (
@@ -215,22 +215,22 @@ export class AgentService {
     for (const key of Object.keys(obj)) {
       const val = obj[key];
 
-      if (Array.isArray(val) && val.length > 25) {
+      if (Array.isArray(val) && val.length > 100) {
         const original = val.length;
         obj[key] = [
-          ...(val as unknown[]).slice(0, 25),
-          { _truncated: `${original - 25} more items omitted` },
+          ...(val as unknown[]).slice(0, 100),
+          { _truncated: `${original - 100} more items omitted` },
         ];
       }
 
       if (val && typeof val === 'object' && !Array.isArray(val)) {
         const keys = Object.keys(val as Record<string, unknown>);
-        if (keys.length > 20) {
+        if (keys.length > 50) {
           const trimmed: Record<string, unknown> = {};
-          for (const k of keys.slice(0, 20)) {
+          for (const k of keys.slice(0, 50)) {
             trimmed[k] = (val as Record<string, unknown>)[k];
           }
-          trimmed._truncated = `${keys.length - 20} more entries omitted`;
+          trimmed._truncated = `${keys.length - 50} more entries omitted`;
           obj[key] = trimmed;
         } else {
           this.trimLargeValues(val as Record<string, unknown>);
@@ -267,18 +267,12 @@ export class AgentService {
     const fastModelId = this.config.get<string>('llmFastModel');
 
     if (tier === 'fast' && this.hasFastModel && fastModelId) {
-      return {
-        model: getModel(provider as any, fastModelId as any),
-        modelId: fastModelId,
-        provider,
-      };
+      const model = getModel(provider as any, fastModelId as any);
+      return { model, modelId: fastModelId, provider };
     }
 
-    return {
-      model: getModel(provider as any, fullModelId as any),
-      modelId: fullModelId,
-      provider,
-    };
+    const model = getModel(provider as any, fullModelId as any);
+    return { model, modelId: fullModelId, provider };
   }
 
   private async callLlm(
@@ -295,7 +289,7 @@ export class AgentService {
     };
     const options = {
       apiKey: getEnvApiKey(provider as any),
-      maxTokens: 512,
+      maxTokens: model.maxTokens,
       temperature,
       onPayload: (payload: any) => {
         if (!payload.tools) payload.tools = [];
