@@ -52,7 +52,7 @@ export class GetGemsSearchSkill implements SkillHandler {
             variables: { query, first: 10 },
           },
           {
-            headers: { 'X-Api-Key': this.apiKey },
+            headers: { Authorization: this.apiKey },
             timeout: 10000,
           },
         ),

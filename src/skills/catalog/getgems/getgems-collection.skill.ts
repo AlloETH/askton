@@ -23,7 +23,7 @@ export class GetGemsCollectionSkill implements SkillHandler {
     const address: string = input.collection_address;
     if (!address) return { error: 'Missing collection_address' };
 
-    const headers = { 'X-Api-Key': this.apiKey };
+    const headers = { Authorization: this.apiKey };
     const base = 'https://api.getgems.io/public-api/v1';
 
     const [infoRes, statsRes] = await Promise.all([

@@ -28,7 +28,7 @@ export class GetGemsUserNftsSkill implements SkillHandler {
     const { data } = await firstValueFrom(
       this.http.get(
         `https://api.getgems.io/public-api/v1/nfts/owner/${address}?limit=${limit}`,
-        { headers: { 'X-Api-Key': this.apiKey } },
+        { headers: { Authorization: this.apiKey } },
       ),
     );
 

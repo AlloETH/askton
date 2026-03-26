@@ -40,42 +40,38 @@ export class GiftRegistryService implements OnModuleInit {
 
   private async refresh(): Promise<void> {
     try {
-      const apiKey = this.config.get<string>('giftassetApiKey')!;
-      const baseUrl = this.config.get<string>('giftassetApiUrl')!;
+      const apiKey = this.config.get<string>('getgemsApiKey')!;
 
-      const { data } = await firstValueFrom(
-        this.http.get(`${baseUrl}/api/v1/gifts/get_gifts_price_list`, {
-          headers: { 'x-api-token': apiKey },
-          params: { models: true },
-          timeout: 15000,
-        }),
-      );
-
-      if (!data || data.status === 'error') {
-        this.logger.warn('Failed to fetch gift list: ' + (data?.message || 'unknown'));
-        return;
-      }
-
-      // Extract gift collection names from the response
-      // API returns { collection_floors: { "Gift Name": {...}, ... }, models_prices: [...] }
+      // Use GetGems /v1/gifts/collections to get all gift collection names
       const names: string[] = [];
-      const raw = data.collection_floors ?? data.data ?? data.gifts ?? data.items ?? data;
+      let after: string | undefined;
 
-      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-        // Keys are the gift names themselves
-        names.push(...Object.keys(raw));
-      } else if (Array.isArray(raw)) {
-        for (const item of raw) {
-          if (!item || typeof item !== 'object') continue;
-          const name =
-            (item as any).collection_name ||
-            (item as any).name ||
-            (item as any).gift_name ||
-            (item as any).title;
+      // Paginate through all gift collections
+      for (let page = 0; page < 10; page++) {
+        const params: Record<string, any> = { limit: 100 };
+        if (after) params.after = after;
+
+        const { data } = await firstValueFrom(
+          this.http.get('https://api.getgems.io/public-api/v1/gifts/collections', {
+            headers: { Authorization: apiKey },
+            params,
+            timeout: 15000,
+          }),
+        );
+
+        const items = data?.items || data?.collections || [];
+        if (!Array.isArray(items) || items.length === 0) break;
+
+        for (const item of items) {
+          const name = item.name || item.metadata?.name;
           if (name && typeof name === 'string') {
             names.push(name);
           }
         }
+
+        // Check for pagination cursor
+        after = data?.cursor || items[items.length - 1]?.cursor;
+        if (!after || items.length < 100) break;
       }
 
       if (names.length > 0) {
@@ -83,11 +79,7 @@ export class GiftRegistryService implements OnModuleInit {
         this.giftNamesLower = this.giftNames.map((n) => n.toLowerCase());
         this.logger.log(`Gift registry loaded: ${this.giftNames.length} names`);
       } else {
-        const sampleKey = Object.keys(raw ?? {})[0];
-        const sampleVal = sampleKey ? JSON.stringify((raw as any)[sampleKey]).slice(0, 200) : 'empty';
-        this.logger.warn(
-          `Gift registry: no names extracted. collection_floors type=${Array.isArray(raw) ? 'array' : typeof raw}, sample: ${sampleKey}=${sampleVal}`,
-        );
+        this.logger.warn('Gift registry: API returned no gift collections');
       }
     } catch (err) {
       this.logger.warn('Gift registry refresh failed: ' + (err as Error).message);
