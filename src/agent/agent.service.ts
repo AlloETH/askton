@@ -93,8 +93,8 @@ export class AgentService {
       },
     ];
 
-    // First call: skill dispatch — use full model (needs to understand intent)
-    let reply = await this.callLlm(messages, undefined, 'full');
+    // First call: skill dispatch — use full model with low temperature for reliable JSON
+    let reply = await this.callLlm(messages, undefined, 'full', 0.3);
     this.logger.log(`LLM reply: ${reply}`);
 
     for (let i = 0; i < 3; i++) {
@@ -285,6 +285,7 @@ export class AgentService {
     messages: Message[],
     onChunk?: OnStreamChunk,
     tier: 'fast' | 'full' = 'full',
+    temperature = 0.9,
   ): Promise<string> {
     const { model, modelId, provider } = this.resolveModel(tier);
 
@@ -295,7 +296,7 @@ export class AgentService {
     const options = {
       apiKey: getEnvApiKey(provider as any),
       maxTokens: 512,
-      temperature: 0.9,
+      temperature,
     };
 
     this.logger.debug(
@@ -316,13 +317,23 @@ export class AgentService {
       return accumulated || 'Sorry, I got no response.';
     }
 
-    const result = await complete(model, context, options);
+    // Retry once on empty response (Groq occasionally returns empty content)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await complete(model, context, options);
 
-    const text = result.content
-      .filter((c): c is TextContent => c.type === 'text')
-      .map((c) => c.text)
-      .join('');
+      const text = result.content
+        .filter((c): c is TextContent => c.type === 'text')
+        .map((c) => c.text)
+        .join('');
 
-    return text || 'Sorry, I got no response.';
+      if (text) return text;
+
+      this.logger.warn(
+        `Empty response from ${provider}/${modelId} (attempt ${attempt + 1}), ` +
+          `content types: [${result.content.map((c) => c.type).join(', ')}]`,
+      );
+    }
+
+    return 'Sorry, I got no response.';
   }
 }
