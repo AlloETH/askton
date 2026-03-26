@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SkillsService } from '../skills/skills.service.js';
+import { GiftRegistryService } from './gift-registry.service.js';
 import { buildSystemPrompt } from './agent.prompts.js';
 import { getModel, getEnvApiKey, stream, complete } from '@mariozechner/pi-ai';
 import type {
@@ -30,6 +31,7 @@ export class AgentService {
   constructor(
     private config: ConfigService,
     private skillsService: SkillsService,
+    private giftRegistry: GiftRegistryService,
   ) {}
 
   onModuleInit() {
@@ -77,10 +79,16 @@ export class AgentService {
     username: string,
     onChunk?: OnStreamChunk,
   ): Promise<string> {
+    // Check if the query mentions a known Telegram Gift — hint the LLM without extra API calls
+    const matchedGift = this.giftRegistry.matchGiftName(query);
+    const userContent = matchedGift
+      ? `[Context: "${matchedGift}" is a Telegram Gift — use gift skills, not getgems]\n${username} asks: ${query}`
+      : `${username} asks: ${query}`;
+
     const messages: Message[] = [
       {
         role: 'user',
-        content: `${username} asks: ${query}`,
+        content: userContent,
         timestamp: Date.now(),
       },
     ];

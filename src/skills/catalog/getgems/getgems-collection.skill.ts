@@ -1,4 +1,5 @@
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
 
@@ -9,18 +10,26 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
   example: { collection_address: 'EQ...' },
 })
 export class GetGemsCollectionSkill implements SkillHandler {
-  constructor(private http: HttpService) {}
+  private apiKey: string;
+
+  constructor(
+    private http: HttpService,
+    private config: ConfigService,
+  ) {
+    this.apiKey = this.config.get<string>('getgemsApiKey')!;
+  }
 
   async execute(input: any): Promise<any> {
     const address: string = input.collection_address;
     if (!address) return { error: 'Missing collection_address' };
 
+    const headers = { 'X-Api-Key': this.apiKey };
     const base = 'https://api.getgems.io/public-api/v1';
 
     const [infoRes, statsRes] = await Promise.all([
-      firstValueFrom(this.http.get(`${base}/collection/${address}`)),
+      firstValueFrom(this.http.get(`${base}/collection/${address}`, { headers })),
       firstValueFrom(
-        this.http.get(`${base}/collection/stats/${address}`),
+        this.http.get(`${base}/collection/stats/${address}`, { headers }),
       ).catch(() => null),
     ]);
 

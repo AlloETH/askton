@@ -10,6 +10,7 @@ export default () => ({
   telegramApiHash: process.env.TELEGRAM_API_HASH,
   telegramSession: process.env.TELEGRAM_SESSION || '',
   tonapiKey: process.env.TONAPI_KEY,
+  getgemsApiKey: process.env.GETGEMS_API_KEY,
   giftassetApiKey: process.env.GIFTASSET_API_KEY,
   giftassetApiUrl: process.env.GIFTASSET_API_URL || 'https://api.giftasset.dev',
 });

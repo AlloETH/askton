@@ -1,4 +1,5 @@
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
 
@@ -9,7 +10,14 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
   example: { owner_address: 'EQ...' },
 })
 export class GetGemsUserNftsSkill implements SkillHandler {
-  constructor(private http: HttpService) {}
+  private apiKey: string;
+
+  constructor(
+    private http: HttpService,
+    private config: ConfigService,
+  ) {
+    this.apiKey = this.config.get<string>('getgemsApiKey')!;
+  }
 
   async execute(input: any): Promise<any> {
     const address: string = input.owner_address;
@@ -20,6 +28,7 @@ export class GetGemsUserNftsSkill implements SkillHandler {
     const { data } = await firstValueFrom(
       this.http.get(
         `https://api.getgems.io/public-api/v1/nfts/owner/${address}?limit=${limit}`,
+        { headers: { 'X-Api-Key': this.apiKey } },
       ),
     );
 

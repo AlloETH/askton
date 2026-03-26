@@ -35,10 +35,10 @@ export class SkillsService {
   getSkillPromptBlock(): string {
     return this.metas
       .map((m) => {
-        const example = JSON.stringify({ skill: m.name, input: m.example });
-        return `${m.name} — ${m.description}\nExample: ${example}`;
+        const params = Object.keys(m.example || {}).join(', ') || 'none';
+        return `• ${m.name}(${params}) — ${m.description}`;
       })
-      .join('\n\n');
+      .join('\n');
   }
 
   async dispatch(
