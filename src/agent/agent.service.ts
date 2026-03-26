@@ -297,6 +297,17 @@ export class AgentService {
       apiKey: getEnvApiKey(provider as any),
       maxTokens: 512,
       temperature,
+      onPayload: (payload: any) => {
+        if (!payload.tools) payload.tools = [];
+        payload.tools.push({
+          type: 'function',
+          function: {
+            name: 'web_search',
+            description: 'Search the web',
+          },
+        });
+        return payload;
+      },
     };
 
     this.logger.debug(
