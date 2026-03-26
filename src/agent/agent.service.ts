@@ -86,9 +86,10 @@ export class AgentService {
         this.logger.log(`Skill result: ${JSON.stringify(skillResult)}`);
 
         messages.push(this.makeAssistantMessage(JSON.stringify(skillCall)));
+        const resultStr = this.truncateResult(skillResult);
         messages.push({
           role: 'user',
-          content: 'Data result: ' + JSON.stringify(skillResult),
+          content: 'Data result: ' + resultStr,
           timestamp: Date.now(),
         } as UserMessage);
 
@@ -142,6 +143,50 @@ export class AgentService {
     }
 
     return null;
+  }
+
+  /** Strip image URLs and truncate skill results to avoid exceeding context */
+  private truncateResult(
+    result: Record<string, unknown>,
+    maxChars = 50000,
+  ): string {
+    let json = JSON.stringify(result, (key, value) => {
+      // Strip image/preview URLs — useless for the LLM
+      if (
+        typeof value === 'string' &&
+        (key === 'image' ||
+          key === 'image_url' ||
+          key === 'preview' ||
+          key === 'icon') &&
+        value.startsWith('http')
+      ) {
+        return undefined;
+      }
+      return value;
+    });
+
+    if (json.length <= maxChars) return json;
+
+    // If still too long, try to trim array items
+    const parsed: Record<string, unknown> = JSON.parse(json) as Record<
+      string,
+      unknown
+    >;
+    for (const key of Object.keys(parsed)) {
+      const val = parsed[key];
+      if (Array.isArray(val) && val.length > 25) {
+        const original = val.length;
+        parsed[key] = [
+          ...(val as unknown[]).slice(0, 3),
+          { _truncated: `${original - 5} more items omitted` },
+        ];
+        json = JSON.stringify(parsed);
+        if (json.length <= maxChars) return json;
+      }
+    }
+
+    // Hard truncate as last resort
+    return json.substring(0, maxChars) + '...(truncated)';
   }
 
   private makeAssistantMessage(text: string): AssistantMessage {

@@ -26,9 +26,6 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 export class StonfiSearchSkill implements SkillHandler {
   private apiKey: string;
   private stonfiCache: CacheEntry<any[]> | null = null;
-  private tonapiCache: CacheEntry<
-    Map<string, { verification: string; holdersCount: number }>
-  > | null = null;
 
   constructor(
     private http: HttpService,
@@ -53,31 +50,61 @@ export class StonfiSearchSkill implements SkillHandler {
       return this.lookupByAddress(query);
     }
 
-    const [stonfiAssets, tonapiMap] = await Promise.all([
+    // Search TonAPI verified accounts first, then STON.fi for pricing
+    const [tonapiSearch, stonfiAssets] = await Promise.all([
+      this.searchTonapi(query),
       this.getStonfiAssets(),
-      this.getTonapiJettons(),
     ]);
 
-    if (stonfiAssets.length === 0 && tonapiMap.size === 0) {
-      return {
-        error: 'Both STON.fi and TonAPI are unreachable — try again later',
-      };
+    const q = query.toLowerCase();
+    const seen = new Set<string>();
+    const scored: ScoredResult[] = [];
+
+    // Add TonAPI verified results first (these are the real tokens)
+    for (const item of tonapiSearch) {
+      if (seen.has(item.address)) continue;
+      seen.add(item.address);
+
+      // Fetch full jetton details for verified hits
+      const details = await this.checkJetton(item.address);
+      const stonfi = stonfiAssets.find(
+        (a: any) => a.contract_address === item.address,
+      );
+
+      let score = 0;
+      if (item.trust === 'whitelist') score += 500;
+      else if (item.trust === 'graylist') score += 50;
+
+      const nameLC = (item.name || '').toLowerCase();
+      if (nameLC.includes(q)) score += 50;
+
+      scored.push({
+        asset: {
+          symbol: details?.symbol || item.name?.split('·')[0]?.trim() || query,
+          display_name: details?.name || item.name?.split('·')[0]?.trim(),
+          contract_address: item.address,
+          decimals: details?.decimals ?? 9,
+          third_party_usd_price: stonfi?.third_party_usd_price || null,
+          image_url: item.preview || stonfi?.image_url || null,
+        },
+        score,
+        verification: item.trust === 'whitelist' ? 'whitelist' : (item.trust || 'unknown'),
+        holdersCount: details?.holdersCount ?? null,
+      });
     }
 
-    const q = query.toLowerCase();
-
-    // Filter STON.fi matches
-    const matches = stonfiAssets.filter(
+    // Add STON.fi matches that aren't already from TonAPI
+    const stonfiMatches = stonfiAssets.filter(
       (a: any) =>
         !a.blacklisted &&
         !a.deprecated &&
         !a.default_symbol &&
+        !seen.has(a.contract_address) &&
         (a.symbol?.toLowerCase().includes(q) ||
           a.display_name?.toLowerCase().includes(q)),
     );
 
-    // Score and rank
-    const scored: ScoredResult[] = matches.map((a: any) => {
+    for (const a of stonfiMatches) {
       let score = 0;
       const sym = (a.symbol || '').toLowerCase();
       const name = (a.display_name || '').toLowerCase();
@@ -90,48 +117,18 @@ export class StonfiSearchSkill implements SkillHandler {
       else if (name.startsWith(q)) score += 30;
       else if (name.includes(q)) score += 10;
 
-      const tonapi = tonapiMap.get(a.contract_address);
-      if (tonapi) {
-        if (tonapi.verification === 'whitelist') score += 200;
-        if (tonapi.holdersCount > 100_000) score += 50;
-        else if (tonapi.holdersCount > 10_000) score += 30;
-        else if (tonapi.holdersCount > 1_000) score += 15;
-      }
-
       if (a.third_party_usd_price) score += 15;
       if (a.community) score += 10;
 
-      return {
+      scored.push({
         asset: a,
         score,
-        verification: tonapi?.verification || 'unknown',
-        holdersCount: tonapi?.holdersCount ?? null,
-      };
-    });
+        verification: 'unknown',
+        holdersCount: null,
+      });
+    }
 
     scored.sort((a, b) => b.score - a.score);
-
-    // For high-scoring results without TonAPI data, verify individually
-    const needsCheck = scored
-      .filter((s) => s.verification === 'unknown' && s.score >= 50)
-      .slice(0, 5);
-
-    if (needsCheck.length > 0) {
-      const checks = await Promise.all(
-        needsCheck.map((s) => this.checkJetton(s.asset.contract_address)),
-      );
-      for (let i = 0; i < needsCheck.length; i++) {
-        const check = checks[i];
-        if (!check) continue;
-        needsCheck[i].verification = check.verification;
-        needsCheck[i].holdersCount = check.holdersCount;
-        if (check.verification === 'whitelist') needsCheck[i].score += 200;
-        if (check.holdersCount > 100_000) needsCheck[i].score += 50;
-        else if (check.holdersCount > 10_000) needsCheck[i].score += 30;
-        else if (check.holdersCount > 1_000) needsCheck[i].score += 15;
-      }
-      scored.sort((a, b) => b.score - a.score);
-    }
 
     const top = scored.slice(0, limit);
 
@@ -151,12 +148,11 @@ export class StonfiSearchSkill implements SkillHandler {
     return {
       query,
       count: results.length,
-      totalMatches: matches.length,
       results,
       note:
         verified.length > 0
           ? `✅ ${verified.length} verified token(s) found. Top: "${verified[0].symbol}" (${verified[0].address})`
-          : `⚠️ No verified tokens found among ${matches.length} results. These may include fakes — use get_jetton_info with a known contract address for a reliable lookup.`,
+          : `⚠️ No verified tokens found. These may include fakes — use get_jetton_info with a known contract address for a reliable lookup.`,
     };
   }
 
@@ -218,6 +214,31 @@ export class StonfiSearchSkill implements SkillHandler {
     }
   }
 
+  /** Search TonAPI accounts by name — returns verified jettons */
+  private async searchTonapi(
+    query: string,
+  ): Promise<
+    Array<{ address: string; name: string; preview: string; trust: string }>
+  > {
+    const headers = { Authorization: `Bearer ${this.apiKey}` };
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get('https://tonapi.io/v2/accounts/search', {
+          headers,
+          params: { name: query },
+          timeout: 10000,
+        }),
+      );
+      // Filter to jetton accounts only
+      return (data.addresses || []).filter(
+        (a: any) =>
+          a.name?.includes('jetton') || a.trust === 'whitelist',
+      );
+    } catch {
+      return [];
+    }
+  }
+
   /** Cached STON.fi full asset list */
   private async getStonfiAssets(): Promise<any[]> {
     if (this.stonfiCache && Date.now() < this.stonfiCache.expiresAt) {
@@ -236,48 +257,16 @@ export class StonfiSearchSkill implements SkillHandler {
     }
   }
 
-  /** Cached TonAPI jetton list with verification + holder counts */
-  private async getTonapiJettons(): Promise<
-    Map<string, { verification: string; holdersCount: number }>
-  > {
-    if (this.tonapiCache && Date.now() < this.tonapiCache.expiresAt) {
-      return this.tonapiCache.data;
-    }
-
-    const headers = { Authorization: `Bearer ${this.apiKey}` };
-    try {
-      const { data } = await firstValueFrom(
-        this.http.get('https://tonapi.io/v2/jettons', {
-          headers,
-          params: { limit: 200, offset: 0 },
-          timeout: 15000,
-        }),
-      );
-
-      const map = new Map<
-        string,
-        { verification: string; holdersCount: number }
-      >();
-      for (const j of data.jettons || []) {
-        const addr = j.metadata?.address || j.address;
-        if (addr) {
-          map.set(addr, {
-            verification: j.verification || 'none',
-            holdersCount: j.holders_count || 0,
-          });
-        }
-      }
-      this.tonapiCache = { data: map, expiresAt: Date.now() + CACHE_TTL };
-      return map;
-    } catch {
-      return this.tonapiCache?.data || new Map();
-    }
-  }
-
-  /** Individual jetton check for tokens not in the bulk list */
+  /** Individual jetton check — returns verification, holders, and metadata */
   private async checkJetton(
     address: string,
-  ): Promise<{ verification: string; holdersCount: number } | null> {
+  ): Promise<{
+    verification: string;
+    holdersCount: number;
+    symbol: string;
+    name: string;
+    decimals: number;
+  } | null> {
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
     try {
@@ -287,9 +276,13 @@ export class StonfiSearchSkill implements SkillHandler {
           timeout: 10000,
         }),
       );
+      const meta = data.metadata || {};
       return {
         verification: data.verification || 'none',
         holdersCount: data.holders_count || 0,
+        symbol: meta.symbol || '',
+        name: meta.name || '',
+        decimals: parseInt(meta.decimals || '9', 10),
       };
     } catch {
       return null;
