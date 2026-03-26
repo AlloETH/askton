@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { rawToFriendly } from './address-util.js';
 
 @Skill({
   name: 'getgems_nft',
@@ -20,8 +21,9 @@ export class GetGemsNftSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const address: string = input.nft_address;
+    let address: string = input.nft_address;
     if (!address) return { error: 'Missing nft_address' };
+    if (address.includes(':')) address = rawToFriendly(address);
 
     const { data } = await firstValueFrom(
       this.http.get(

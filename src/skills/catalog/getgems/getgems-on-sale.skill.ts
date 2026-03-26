@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { rawToFriendly } from './address-util.js';
 
 @Skill({
   name: 'getgems_on_sale',
@@ -20,8 +21,9 @@ export class GetGemsOnSaleSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const address: string = input.collection_address;
+    let address: string = input.collection_address;
     if (!address) return { error: 'Missing collection_address' };
+    if (address.includes(':')) address = rawToFriendly(address);
 
     const limit: number = input.limit || 20;
 

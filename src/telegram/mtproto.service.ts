@@ -366,6 +366,92 @@ export class MtprotoService {
     }
   }
 
+  // ── Get user's star gifts ──
+
+  async getUserStarGifts(
+    username: string,
+    limit = 50,
+  ): Promise<Record<string, unknown> | null> {
+    if (!this.ready || !this.client) return null;
+
+    const clean = username.replace(/^@/, '');
+
+    try {
+      const { entity } = await this.resolveUsername(clean);
+      if (!entity) return null;
+
+      let peer: Api.TypeInputPeer;
+      if (entity instanceof Api.User) {
+        peer = new Api.InputPeerUser({
+          userId: entity.id,
+          accessHash: entity.accessHash!,
+        });
+      } else if (entity instanceof Api.Channel) {
+        peer = new Api.InputPeerChannel({
+          channelId: entity.id,
+          accessHash: entity.accessHash!,
+        });
+      } else {
+        return null;
+      }
+
+      const result = await this.client.invoke(
+        new Api.payments.GetSavedStarGifts({
+          peer,
+          offset: '',
+          limit: Math.min(limit, 100),
+        }),
+      );
+
+      const gifts = (result as any).gifts || [];
+      const count = (result as any).count || gifts.length;
+
+      return {
+        count,
+        gifts: gifts.map((g: any) => {
+          const gift = g.gift;
+          const base: Record<string, unknown> = {
+            date: g.date ? new Date(g.date * 1000).toISOString() : null,
+            nameHidden: g.nameHidden || false,
+            unsaved: g.unsaved || false,
+            convertStars: g.convertStars?.toString() || null,
+            upgradeStars: g.upgradeStars?.toString() || null,
+            message: g.message?.text || null,
+          };
+
+          if (gift?.className === 'StarGiftUnique') {
+            base.type = 'unique';
+            base.id = gift.id?.toString();
+            base.title = gift.title || null;
+            base.slug = gift.slug || null;
+            base.num = gift.num || null;
+            base.availabilityIssued = gift.availabilityIssued || null;
+            base.availabilityTotal = gift.availabilityTotal || null;
+            base.attributes = (gift.attributes || []).map((a: any) => ({
+              type: a.className,
+              name: a.name || null,
+              rarityPermille: a.rarityPermille || null,
+            }));
+          } else if (gift) {
+            base.type = gift.limited ? 'limited' : 'standard';
+            base.id = gift.id?.toString();
+            base.stars = gift.stars?.toString() || null;
+            base.limited = gift.limited || false;
+            base.soldOut = gift.soldOut || false;
+            base.availabilityRemains = gift.availabilityRemains || null;
+            base.availabilityTotal = gift.availabilityTotal || null;
+          }
+
+          return base;
+        }),
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`getUserStarGifts failed for ${clean}: ${msg}`);
+      return null;
+    }
+  }
+
   // ── Helpers ──
 
   private formatRestriction(

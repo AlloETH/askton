@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { rawToFriendly } from './address-util.js';
 
 @Skill({
   name: 'getgems_search',
@@ -47,7 +48,10 @@ export class GetGemsSearchSkill implements SkillHandler {
     // Enrich top results with GetGems collection data
     const results = await Promise.all(
       collections.slice(0, 5).map(async (match: any) => {
-        const addr = match.address;
+        const rawAddr = match.address;
+        const addr = rawAddr.includes(':')
+          ? rawToFriendly(rawAddr)
+          : rawAddr;
         const name = match.name?.replace(' · collection', '') || match.name;
         try {
           const { data: col } = await firstValueFrom(
