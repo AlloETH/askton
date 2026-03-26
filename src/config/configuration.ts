@@ -13,4 +13,5 @@ export default () => ({
   getgemsApiKey: process.env.GETGEMS_API_KEY,
   giftassetApiKey: process.env.GIFTASSET_API_KEY,
   giftassetApiUrl: process.env.GIFTASSET_API_URL || 'https://api.giftasset.dev',
+  tavilyApiKey: process.env.TAVILY_API_KEY,
 });
