@@ -14,6 +14,8 @@ interface Entity {
 }
 
 const STREAM_EDIT_INTERVAL_MS = 1500;
+/** Telegram inline queries expire after ~15s; answer before that */
+const INLINE_TIMEOUT_MS = 12_000;
 
 @Injectable()
 export class TelegramService {
@@ -39,7 +41,16 @@ export class TelegramService {
 
     try {
       const username = ctx.inlineQuery!.from.first_name || 'someone';
-      const reply = await this.agentService.run(query, 'inline', username);
+
+      const timeout = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), INLINE_TIMEOUT_MS),
+      );
+      const result = await Promise.race([
+        this.agentService.run(query, 'inline', username),
+        timeout,
+      ]);
+
+      const reply = result ?? "This query takes a bit longer — try asking me in a direct message.";
 
       const resultId = createHash('md5').update(query + Date.now()).digest('hex').slice(0, 32);
 
@@ -56,10 +67,10 @@ export class TelegramService {
         },
       ];
 
-      await ctx.answerInlineQuery(results, { cache_time: 30 });
+      await ctx.answerInlineQuery(results, { cache_time: result ? 30 : 5 });
     } catch (err) {
       this.logger.error('Error handling inline query', err);
-      await ctx.answerInlineQuery([], { cache_time: 5 });
+      await ctx.answerInlineQuery([], { cache_time: 5 }).catch(() => {});
     }
   }
 
