@@ -21,57 +21,54 @@ export class FragmentHistorySkill implements SkillHandler {
     let url: string;
     if (type === 'number') {
       url = `https://fragment.com/number/${item.replace(/[^0-9]/g, '')}`;
-    } else if (type === 'gift') {
-      url = `https://fragment.com/gift/${encodeURIComponent(item)}`;
     } else {
       url = `https://fragment.com/username/${item.replace(/^@/, '')}`;
     }
 
     const { data: html } = await firstValueFrom(
-      this.http.get<string>(url, { headers, responseType: 'text' }),
+      this.http.get<string>(url, { headers, responseType: 'text', timeout: 15000 }),
     );
 
     const body = typeof html === 'string' ? html : String(html);
     const events: any[] = [];
 
-    // Match history table rows — common Fragment pattern
-    const rowRe =
-      /class="[^"]*tm-section-history[^"]*"[\s\S]*?(<tr[\s\S]*?<\/tr>)/gi;
-    const historyBlock = body.match(
-      /(?:history|activity|transactions?)[\s\S]*?<table[\s\S]*?<\/table>/i,
+    // Extract tonRate for USD conversion
+    let tonRate: number | null = null;
+    const rateMatch = body.match(/"tonRate"\s*:\s*([\d.]+)/);
+    if (rateMatch) tonRate = parseFloat(rateMatch[1]);
+
+    // Fragment shows ownership history as a table with columns:
+    // "Sale price | Date | Buyer"
+    const tableMatch = body.match(
+      /Sale\s*price[\s\S]*?<\/table>/i,
     );
 
-    if (historyBlock) {
+    if (tableMatch) {
       const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-      let tr;
-      while ((tr = trRe.exec(historyBlock[0])) !== null && events.length < 20) {
+      let tr: RegExpExecArray | null;
+      while ((tr = trRe.exec(tableMatch[0])) !== null && events.length < 20) {
+        if (/<th/i.test(tr[1])) continue;
+
         const cells: string[] = [];
         const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-        let td;
+        let td: RegExpExecArray | null;
         while ((td = tdRe.exec(tr[1])) !== null) {
           cells.push(td[1].replace(/<[^>]*>/g, '').trim());
         }
         if (cells.length >= 2) {
+          const priceOrAction = cells[0] || '';
+          const isTransfer = /transferred/i.test(priceOrAction);
+          const priceTon = isTransfer ? null : priceOrAction.replace(/,/g, '') || null;
           events.push({
-            action: cells[0],
-            detail: cells[1],
-            price: cells[2] || null,
-            date: cells[3] || cells[2] || null,
+            action: isTransfer ? 'transfer' : 'sale',
+            priceTon,
+            priceUsd: priceTon && tonRate
+              ? (parseFloat(priceTon) * tonRate).toFixed(2)
+              : null,
+            date: cells[1] || null,
+            buyer: cells[2] || null,
           });
         }
-      }
-    }
-
-    // Fallback: extract any sale/transfer mentions
-    if (events.length === 0) {
-      const saleRe =
-        /(?:sold|transferred|assigned|purchased)[\s\S]{0,100}?(\d[\d,.]*)\s*TON/gi;
-      let s;
-      while ((s = saleRe.exec(body)) !== null && events.length < 10) {
-        events.push({
-          action: s[0].substring(0, 50).replace(/<[^>]*>/g, '').trim(),
-          price: s[1],
-        });
       }
     }
 
@@ -79,8 +76,9 @@ export class FragmentHistorySkill implements SkillHandler {
       type,
       item,
       eventCount: events.length,
+      tonRateUsd: tonRate,
       events,
-      note: 'Scraped from fragment.com — verify on site',
+      url,
     };
   }
 }
