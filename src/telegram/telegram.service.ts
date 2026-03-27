@@ -71,7 +71,8 @@ export class TelegramService {
     }
 
     const groupId = String(msg.chat.id);
-    const username = msg.from?.first_name || 'someone';
+    const displayName = msg.from?.first_name || 'someone';
+    const tgUsername = msg.from?.username || null;
 
     try {
       await ctx.telegram.sendChatAction(msg.chat.id, 'typing');
@@ -104,8 +105,9 @@ export class TelegramService {
       const reply = await this.agentService.run(
         query,
         groupId,
-        username,
+        displayName,
         scheduleEdit,
+        tgUsername,
       );
 
       // Final edit with complete text + Markdown

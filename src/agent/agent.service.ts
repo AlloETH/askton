@@ -76,14 +76,26 @@ export class AgentService {
   async run(
     query: string,
     _groupId: string,
-    username: string,
+    displayName: string,
     onChunk?: OnStreamChunk,
+    tgUsername?: string | null,
   ): Promise<string> {
+    // Rewrite self-referential queries ("my gifts", "I own") to use the sender's @username
+    let rewrittenQuery = query;
+    if (tgUsername && /\b(my|i own|i have|do i|i hold)\b/i.test(query)) {
+      rewrittenQuery = query
+        .replace(/\bmy\b/gi, `@${tgUsername}'s`)
+        .replace(/\b(i own|i have|i hold)\b/gi, `@${tgUsername} owns`)
+        .replace(/\bdo i\b/gi, `does @${tgUsername}`);
+    }
+
     // Check if the query mentions a known Telegram Gift — hint the LLM without extra API calls
-    const matchedGift = this.giftRegistry.matchGiftName(query);
-    const userContent = matchedGift
-      ? `[Context: "${matchedGift}" is a Telegram Gift — use gift skills, not getgems]\n${username} asks: ${query}`
-      : `${username} asks: ${query}`;
+    const matchedGift = this.giftRegistry.matchGiftName(rewrittenQuery);
+    const userTag = tgUsername ? `@${tgUsername}` : displayName;
+    const contextLine = matchedGift
+      ? `[Context: "${matchedGift}" is a Telegram Gift — use gift skills, not getgems]\n`
+      : '';
+    const userContent = `${contextLine}${userTag} asks: ${rewrittenQuery}`;
 
     const messages: Message[] = [
       {
