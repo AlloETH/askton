@@ -32,7 +32,8 @@ export class TelegramService {
   async handleInlineQuery(ctx: Context) {
     const query = ctx.inlineQuery?.query?.trim();
 
-    if (!query) {
+    const chatType = ctx.inlineQuery?.chat_type;
+    if (!query || chatType === 'group' || chatType === 'supergroup') {
       await ctx.answerInlineQuery([], { cache_time: 0 });
       return;
     }
