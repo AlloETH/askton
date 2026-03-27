@@ -298,36 +298,58 @@ export class AgentService {
     );
 
     if (onChunk) {
-      const eventStream = stream(model, context, options);
-      let accumulated = '';
+      try {
+        const eventStream = stream(model, context, options);
+        let accumulated = '';
 
-      for await (const event of eventStream) {
-        if (event.type === 'text_delta' && 'delta' in event) {
-          accumulated += event.delta;
-          onChunk(accumulated);
+        for await (const event of eventStream) {
+          if (event.type === 'text_delta' && 'delta' in event) {
+            accumulated += event.delta;
+            onChunk(accumulated);
+          }
         }
-      }
 
-      return accumulated || 'Sorry, I got no response.';
+        return accumulated || 'Sorry, I got no response.';
+      } catch (err) {
+        const msg = this.extractRateLimitMessage(err);
+        if (msg) return msg;
+        throw err;
+      }
     }
 
     // Retry once on empty response (Groq occasionally returns empty content)
     for (let attempt = 0; attempt < 2; attempt++) {
-      const result = await complete(model, context, options);
+      try {
+        const result = await complete(model, context, options);
 
-      const text = result.content
-        .filter((c): c is TextContent => c.type === 'text')
-        .map((c) => c.text)
-        .join('');
+        const text = result.content
+          .filter((c): c is TextContent => c.type === 'text')
+          .map((c) => c.text)
+          .join('');
 
-      if (text) return text;
+        if (text) return text;
 
-      this.logger.warn(
-        `Empty response from ${provider}/${modelId} (attempt ${attempt + 1}), ` +
-          `content types: [${result.content.map((c) => c.type).join(', ')}]`,
-      );
+        this.logger.warn(
+          `Empty response from ${provider}/${modelId} (attempt ${attempt + 1}), ` +
+            `content types: [${result.content.map((c) => c.type).join(', ')}]`,
+        );
+      } catch (err) {
+        const msg = this.extractRateLimitMessage(err);
+        if (msg) return msg;
+        throw err;
+      }
     }
 
     return 'Sorry, I got no response.';
+  }
+
+  private extractRateLimitMessage(err: unknown): string | null {
+    const msg = err instanceof Error ? err.message : String(err);
+    const match = msg.match(/rate limit.*?please try again in ([^\s.]+)/i);
+    if (match) {
+      this.logger.warn(`Rate limit hit: ${msg}`);
+      return `Rate limit reached — please try again in ${match[1]}.`;
+    }
+    return null;
   }
 }
