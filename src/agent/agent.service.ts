@@ -301,12 +301,21 @@ export class AgentService {
       try {
         const eventStream = stream(model, context, options);
         let accumulated = '';
+        let streamError: string | undefined;
 
         for await (const event of eventStream) {
           if (event.type === 'text_delta' && 'delta' in event) {
             accumulated += event.delta;
             onChunk(accumulated);
+          } else if (event.type === 'error') {
+            streamError = event.error.errorMessage;
           }
+        }
+
+        if (streamError) {
+          const msg = this.extractRateLimitMessage(streamError);
+          if (msg) return msg;
+          this.logger.error(`Stream error from ${provider}/${modelId}: ${streamError}`);
         }
 
         return accumulated || 'Sorry, I got no response.';
@@ -321,6 +330,16 @@ export class AgentService {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const result = await complete(model, context, options);
+
+        // Check for API-level errors (rate limits, etc.) returned in the response
+        if (result.stopReason === 'error' && result.errorMessage) {
+          const msg = this.extractRateLimitMessage(result.errorMessage);
+          if (msg) return msg;
+          this.logger.error(
+            `API error from ${provider}/${modelId}: ${result.errorMessage}`,
+          );
+          return `Sorry, something went wrong (${result.errorMessage}).`;
+        }
 
         const text = result.content
           .filter((c): c is TextContent => c.type === 'text')
@@ -345,10 +364,15 @@ export class AgentService {
 
   private extractRateLimitMessage(err: unknown): string | null {
     const msg = err instanceof Error ? err.message : String(err);
+    // Match both "rate limit ... try again in X" and "rate_limit_exceeded" error codes
     const match = msg.match(/rate limit.*?please try again in ([^\s.]+)/i);
     if (match) {
       this.logger.warn(`Rate limit hit: ${msg}`);
       return `Rate limit reached — please try again in ${match[1]}.`;
+    }
+    if (/rate.?limit.?exceeded/i.test(msg)) {
+      this.logger.warn(`Rate limit hit: ${msg}`);
+      return `Rate limit reached — please try again later.`;
     }
     return null;
   }

@@ -5,7 +5,7 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'fragment_collections',
   description:
-    'List gift collections available on Fragment marketplace with item counts.',
+    'List collectible gift collections on Fragment marketplace with item counts. For Telegram Gift prices/sales, use gift skills instead.',
   example: {},
 })
 export class FragmentCollectionsSkill implements SkillHandler {

@@ -5,7 +5,7 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'fragment_search',
   description:
-    'Search usernames, phone numbers, or gifts on Fragment marketplace. Specify type: username, number, or gift.',
+    'Search Telegram usernames or phone numbers for sale on Fragment marketplace. Specify type: username or number. NOT for gifts — use gift skills instead.',
   example: { query: 'crypto', type: 'username' },
 })
 export class FragmentSearchSkill implements SkillHandler {

@@ -4,14 +4,22 @@ import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
 import { resolveJetton } from '../../resolve-jetton.js';
 
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 @Skill({
-  name: 'get_dedust_prices',
+  name: 'get_stonfi_prices',
   description:
-    'Get real-time token prices from DeDust DEX by name, symbol ($DOGS), or contract address. Use "TON" for native TON.',
+    'Get real-time token prices from STON.fi DEX by name, symbol ($DOGS), or contract address. Use "TON" for native TON.',
   example: { token: 'DOGS or EQ...' },
 })
-export class DedustPricesSkill implements SkillHandler {
+export class StonfiPricesSkill implements SkillHandler {
   private apiKey: string;
+  private assetsCache: CacheEntry<any[]> | null = null;
 
   constructor(
     private http: HttpService,
@@ -33,29 +41,29 @@ export class DedustPricesSkill implements SkillHandler {
       address = resolved.address;
     }
 
-    const assetStr = isNative ? 'native' : `jetton:${address}`;
-
-    // Try DeDust first, fall back to TonAPI rates
+    // Try STON.fi asset list first
     try {
-      const { data } = await firstValueFrom(
-        this.http.get(
-          `https://api.dedust.io/v2/assets/${encodeURIComponent(assetStr)}`,
-          { timeout: 10000 },
-        ),
-      );
+      const assets = await this.getStonfiAssets();
+      const match = isNative
+        ? assets.find((a: any) => a.kind === 'Ton')
+        : assets.find((a: any) => a.contract_address === address);
 
-      return {
-        token: address,
-        symbol: data.symbol || data.metadata?.symbol,
-        name: data.name || data.metadata?.name,
-        priceUsd: data.price ?? null,
-        tvl: data.tvl ?? null,
-        volume24h: data.volume24h ?? null,
-      };
+      if (match?.third_party_usd_price) {
+        return {
+          token: address,
+          symbol: match.symbol || null,
+          name: match.display_name || null,
+          priceUsd: match.third_party_usd_price,
+          tvl: null,
+          volume24h: null,
+          source: 'stonfi',
+        };
+      }
     } catch {
-      // DeDust failed (token may not be listed) — fall back to TonAPI rates
+      // STON.fi failed — fall back to TonAPI rates
     }
 
+    // Fallback: TonAPI rates
     try {
       const headers = { Authorization: `Bearer ${this.apiKey}` };
       const [ratesRes, jettonRes] = await Promise.all([
@@ -94,5 +102,18 @@ export class DedustPricesSkill implements SkillHandler {
     }
 
     return { error: `Could not fetch price for "${token}"` };
+  }
+
+  private async getStonfiAssets(): Promise<any[]> {
+    if (this.assetsCache && Date.now() < this.assetsCache.expiresAt) {
+      return this.assetsCache.data;
+    }
+
+    const { data } = await firstValueFrom(
+      this.http.get('https://api.ston.fi/v1/assets', { timeout: 15000 }),
+    );
+    const assets = data.asset_list || [];
+    this.assetsCache = { data: assets, expiresAt: Date.now() + CACHE_TTL };
+    return assets;
   }
 }

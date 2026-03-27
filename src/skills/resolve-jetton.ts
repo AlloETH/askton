@@ -124,14 +124,34 @@ export async function resolveJetton(
         timeout: 10000,
       }),
     );
-    const match = (data.addresses || []).find(
-      (a: any) =>
-        a.trust === 'whitelist' &&
-        (a.name?.toLowerCase().includes('jetton') ||
-          a.name?.toLowerCase().includes(clean.toLowerCase())),
+    const addresses: any[] = data.addresses || [];
+
+    // Prefer exact symbol/name match among whitelisted results
+    const cleanLC = clean.toLowerCase();
+    const whitelisted = addresses.filter(
+      (a: any) => a.trust === 'whitelist',
     );
-    if (match?.address) {
-      return { address: match.address };
+
+    // 1. Exact symbol match (name before the · separator)
+    const exactMatch = whitelisted.find((a: any) => {
+      const symbol = (a.name || '').split('·')[0].trim().toLowerCase();
+      return symbol === cleanLC;
+    });
+    if (exactMatch?.address) {
+      return { address: exactMatch.address };
+    }
+
+    // 2. Name contains search term
+    const partialMatch = whitelisted.find((a: any) =>
+      a.name?.toLowerCase().includes(cleanLC),
+    );
+    if (partialMatch?.address) {
+      return { address: partialMatch.address };
+    }
+
+    // 3. First whitelisted result as last resort
+    if (whitelisted.length > 0 && whitelisted[0].address) {
+      return { address: whitelisted[0].address };
     }
   } catch {
     // fall through to DeDust

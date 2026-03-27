@@ -5,7 +5,7 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'fragment_history',
   description:
-    'Get ownership or sale history for a Fragment item — username, number, or gift. Shows past sales, bids, and transfers.',
+    'Get sale/ownership history for a Telegram username or phone number on Fragment. Shows past sales, bids, and transfers. NOT for gifts.',
   example: { type: 'username', item: 'allo' },
 })
 export class FragmentHistorySkill implements SkillHandler {

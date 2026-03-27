@@ -5,7 +5,7 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'fragment_nft',
   description:
-    'Get NFT metadata for a Fragment gift — name, collection, price, owner, rarity. Use gift slug like "plushpepe-1821".',
+    'Get NFT metadata for a specific Fragment collectible gift by slug (e.g. "plushpepe-1821") — name, collection, price, owner, rarity.',
   example: { slug: 'plushpepe-1821' },
 })
 export class FragmentNftSkill implements SkillHandler {

@@ -5,7 +5,7 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'fragment_item',
   description:
-    'Get detailed info for a specific item on Fragment — username, phone number, or gift. Provide the item identifier.',
+    'Get detailed info for a Telegram username or phone number on Fragment — price, status, owner. NOT for gifts.',
   example: { type: 'username', item: 'allo' },
 })
 export class FragmentItemSkill implements SkillHandler {

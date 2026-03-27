@@ -1,9 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Context } from 'telegraf';
-import { Message, Update, InlineQueryResult } from 'telegraf/types';
+import { Message, Update } from 'telegraf/types';
 import { AgentService } from '../agent/agent.service.js';
-import { createHash } from 'crypto';
 
 type TextMessage = Update.New & Update.NonChannel & Message.TextMessage;
 
@@ -14,8 +13,6 @@ interface Entity {
 }
 
 const STREAM_EDIT_INTERVAL_MS = 1500;
-/** Telegram inline queries expire after ~15s; answer before that */
-const INLINE_TIMEOUT_MS = 12_000;
 
 @Injectable()
 export class TelegramService {
@@ -27,52 +24,6 @@ export class TelegramService {
     private config: ConfigService,
   ) {
     this.botUsername = this.config.get<string>('botUsername')!;
-  }
-
-  async handleInlineQuery(ctx: Context) {
-    const query = ctx.inlineQuery?.query?.trim();
-
-    const chatType = ctx.inlineQuery?.chat_type;
-    if (!query || chatType !== 'private') {
-      await ctx.answerInlineQuery([], { cache_time: 0 });
-      return;
-    }
-
-    this.logger.log(`Inline query: "${query}" from ${ctx.inlineQuery!.from.first_name}`);
-
-    try {
-      const username = ctx.inlineQuery!.from.first_name || 'someone';
-
-      const timeout = new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), INLINE_TIMEOUT_MS),
-      );
-      const result = await Promise.race([
-        this.agentService.run(query, 'inline', username),
-        timeout,
-      ]);
-
-      const reply = result ?? "This query takes a bit longer — try asking me in a direct message.";
-
-      const resultId = createHash('md5').update(query + Date.now()).digest('hex').slice(0, 32);
-
-      const results: InlineQueryResult[] = [
-        {
-          type: 'article',
-          id: resultId,
-          title: query.length > 64 ? query.slice(0, 61) + '...' : query,
-          description: reply.length > 100 ? reply.slice(0, 97) + '...' : reply,
-          input_message_content: {
-            message_text: reply,
-            parse_mode: 'Markdown',
-          },
-        },
-      ];
-
-      await ctx.answerInlineQuery(results, { cache_time: result ? 30 : 5 });
-    } catch (err) {
-      this.logger.error('Error handling inline query', err);
-      await ctx.answerInlineQuery([], { cache_time: 5 }).catch(() => {});
-    }
   }
 
   async handleMessage(ctx: Context) {
