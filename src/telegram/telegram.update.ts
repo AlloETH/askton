@@ -1,4 +1,4 @@
-import { Update, On, Start, Help, Ctx } from 'nestjs-telegraf';
+import { Update, On, Start, Help, InlineQuery, Ctx } from 'nestjs-telegraf';
 import { Context } from 'telegraf';
 import { TelegramService } from './telegram.service.js';
 
@@ -26,6 +26,11 @@ export class TelegramUpdate {
         "Example: `@asktonbot what's TON trading at?`",
       { parse_mode: 'Markdown' },
     );
+  }
+
+  @InlineQuery(/.*/)
+  async onInlineQuery(@Ctx() ctx: Context) {
+    await this.telegramService.handleInlineQuery(ctx);
   }
 
   @On('text')
