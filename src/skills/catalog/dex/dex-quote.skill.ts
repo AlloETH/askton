@@ -1,17 +1,31 @@
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import {
+  resolveJetton,
+  toUnits,
+  fromUnits,
+  getDecimals,
+} from '../../resolve-jetton.js';
 
 const TON_ADDRESS = 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
 
 @Skill({
   name: 'get_dex_quote',
   description:
-    'compare swap quotes from STON.fi and DeDust DEXes for a token pair. Use "TON" for native TON or a jetton contract address',
-  example: { from: 'TON', to: 'EQ...jetton_address', amount: 10 },
+    'Compare swap quotes from STON.fi and DeDust DEXes. Accepts token names ($DOGS), symbols, or contract addresses. Use "TON" for native TON.',
+  example: { from: 'TON', to: 'DOGS', amount: 10 },
 })
 export class DexQuoteSkill implements SkillHandler {
-  constructor(private http: HttpService) {}
+  private apiKey: string;
+
+  constructor(
+    private http: HttpService,
+    private config: ConfigService,
+  ) {
+    this.apiKey = this.config.get<string>('tonapiKey')!;
+  }
 
   async execute(input: any): Promise<any> {
     const fromToken: string = input.from || 'TON';
@@ -19,38 +33,66 @@ export class DexQuoteSkill implements SkillHandler {
     const amount: number = input.amount || 1;
 
     if (!toToken) {
-      return { error: 'Missing "to" token address' };
+      return { error: 'Missing "to" token' };
     }
 
-    const fromAddr =
-      fromToken.toUpperCase() === 'TON' ? TON_ADDRESS : fromToken;
-    const toAddr = toToken.toUpperCase() === 'TON' ? TON_ADDRESS : toToken;
+    // Resolve both tokens
+    const fromResolved = await resolveJetton(
+      this.http,
+      fromToken,
+      this.apiKey,
+    );
+    const toResolved = await resolveJetton(this.http, toToken, this.apiKey);
 
-    // Determine decimals (TON = 9, jettons default 9 too)
-    const decimals = 9;
-    const amountRaw = BigInt(Math.round(amount * 10 ** decimals)).toString();
+    if (!fromResolved) return { error: `Token "${fromToken}" not found` };
+    if (!toResolved) return { error: `Token "${toToken}" not found` };
+
+    const fromAddr =
+      fromToken.toUpperCase() === 'TON'
+        ? TON_ADDRESS
+        : fromResolved.address;
+    const toAddr =
+      toToken.toUpperCase() === 'TON'
+        ? TON_ADDRESS
+        : toResolved.address;
+
+    // Get correct decimals for input token
+    const fromDecimals =
+      fromResolved.decimals ??
+      (await getDecimals(this.http, fromToken));
+    const toDecimals =
+      toResolved.decimals ??
+      (await getDecimals(this.http, toToken));
+
+    const amountRaw = toUnits(amount, fromDecimals).toString();
 
     const [stonfi, dedust] = await Promise.allSettled([
-      this.getStonfiQuote(fromAddr, toAddr, amountRaw),
-      this.getDedustQuote(fromAddr, toAddr, amountRaw),
+      this.getStonfiQuote(fromAddr, toAddr, amountRaw, toDecimals),
+      this.getDedustQuote(fromAddr, toAddr, amountRaw, toDecimals),
     ]);
 
     const result: any = {
       from: fromToken,
+      fromAddress: fromAddr,
       to: toToken,
+      toAddress: toAddr,
       amount,
     };
 
     if (stonfi.status === 'fulfilled') {
       result.stonfi = stonfi.value;
     } else {
-      result.stonfi = { error: stonfi.reason?.message || 'Quote unavailable' };
+      result.stonfi = {
+        error: stonfi.reason?.message || 'Quote unavailable',
+      };
     }
 
     if (dedust.status === 'fulfilled') {
       result.dedust = dedust.value;
     } else {
-      result.dedust = { error: dedust.reason?.message || 'Quote unavailable' };
+      result.dedust = {
+        error: dedust.reason?.message || 'Quote unavailable',
+      };
     }
 
     // Determine best
@@ -75,6 +117,7 @@ export class DexQuoteSkill implements SkillHandler {
     fromAddr: string,
     toAddr: string,
     amountRaw: string,
+    toDecimals: number,
   ): Promise<any> {
     const url = `https://api.ston.fi/v1/swap/simulate?offer_address=${fromAddr}&ask_address=${toAddr}&units=${amountRaw}&slippage_tolerance=0.01`;
 
@@ -82,18 +125,21 @@ export class DexQuoteSkill implements SkillHandler {
       this.http.get(url, { timeout: 10000 }),
     );
 
-    const decimals = 9;
-    const expectedOutput =
-      Number(BigInt(data.ask_units || '0')) / 10 ** decimals;
-    const minOutput =
-      Number(BigInt(data.min_ask_units || '0')) / 10 ** decimals;
+    const expectedOutput = fromUnits(
+      BigInt(data.ask_units || '0'),
+      toDecimals,
+    );
+    const minOutput = fromUnits(
+      BigInt(data.min_ask_units || '0'),
+      toDecimals,
+    );
 
     return {
       expectedOutput,
       minOutput,
       priceImpact: data.price_impact || null,
       fee: data.fee_units
-        ? Number(BigInt(data.fee_units)) / 10 ** decimals
+        ? fromUnits(BigInt(data.fee_units), toDecimals)
         : null,
     };
   }
@@ -102,6 +148,7 @@ export class DexQuoteSkill implements SkillHandler {
     fromAddr: string,
     toAddr: string,
     amountRaw: string,
+    toDecimals: number,
   ): Promise<any> {
     const url = `https://api.dedust.io/v2/routing/plan?from=${fromAddr}&to=${toAddr}&amount=${amountRaw}`;
 
@@ -114,9 +161,8 @@ export class DexQuoteSkill implements SkillHandler {
     }
 
     const route = Array.isArray(data) ? data[0] : data;
-    const decimals = 9;
     const amountOut = route.amountOut || route.amount_out || '0';
-    const expectedOutput = Number(BigInt(amountOut)) / 10 ** decimals;
+    const expectedOutput = fromUnits(BigInt(amountOut), toDecimals);
 
     return {
       expectedOutput,

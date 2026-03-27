@@ -2,12 +2,13 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { resolveJetton } from '../../resolve-jetton.js';
 
 @Skill({
   name: 'get_jetton_holders',
   description:
-    'list top holders of a jetton (token) ranked by balance — useful for whale analysis',
-  example: { jetton_address: 'EQ...', limit: 10 },
+    'list top holders of a jetton (token) by name, symbol ($DOGS), or contract address — useful for whale analysis',
+  example: { jetton_address: 'DOGS or EQ...', limit: 10 },
 })
 export class JettonHoldersSkill implements SkillHandler {
   private apiKey: string;
@@ -20,11 +21,14 @@ export class JettonHoldersSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const address: string = input.jetton_address;
+    const raw: string = input.jetton_address || '';
     const limit = Math.min(Math.max(input.limit || 10, 1), 100);
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
-    // Fetch holders
+    const resolved = await resolveJetton(this.http, raw, this.apiKey);
+    if (!resolved) return { error: `Token "${raw}" not found` };
+    const address = resolved.address;
+
     const { data } = await firstValueFrom(
       this.http.get(
         `https://tonapi.io/v2/jettons/${address}/holders?limit=${limit}`,
@@ -32,7 +36,6 @@ export class JettonHoldersSkill implements SkillHandler {
       ),
     );
 
-    // Fetch jetton metadata for decimals/symbol
     const { data: jettonData } = await firstValueFrom(
       this.http.get(`https://tonapi.io/v2/jettons/${address}`, { headers }),
     );
@@ -43,9 +46,9 @@ export class JettonHoldersSkill implements SkillHandler {
     const divisor = BigInt(10) ** BigInt(decimals);
 
     const holders = (data.addresses || []).map((h: any, i: number) => {
-      const raw = BigInt(h.balance || '0');
-      const whole = raw / divisor;
-      const frac = raw % divisor;
+      const rawBal = BigInt(h.balance || '0');
+      const whole = rawBal / divisor;
+      const frac = rawBal % divisor;
       const balance = Number(whole) + Number(frac) / Number(divisor);
 
       return {

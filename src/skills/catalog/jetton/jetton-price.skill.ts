@@ -2,6 +2,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { resolveJetton } from '../../resolve-jetton.js';
 
 @Skill({
   name: 'get_jetton_price',
@@ -20,15 +21,12 @@ export class JettonPriceSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    let address: string = (input.jetton_address || '').replace(/^\$/, '').trim();
+    const raw: string = input.jetton_address || '';
     const headers = { Authorization: `Bearer ${this.apiKey}` };
 
-    // If not a valid address, search for the token by name/symbol
-    if (!this.isAddress(address)) {
-      const resolved = await this.resolveByName(address, headers);
-      if (!resolved) return { error: `Token "${address}" not found` };
-      address = resolved;
-    }
+    const resolved = await resolveJetton(this.http, raw, this.apiKey);
+    if (!resolved) return { error: `Token "${raw}" not found` };
+    const address = resolved.address;
 
     const { data } = await firstValueFrom(
       this.http.get(
@@ -39,7 +37,6 @@ export class JettonPriceSkill implements SkillHandler {
 
     const rates = data.rates?.[address];
     if (!rates) {
-      // Check if token exists at all
       try {
         await firstValueFrom(
           this.http.get(`https://tonapi.io/v2/jettons/${address}`, { headers }),
@@ -55,14 +52,13 @@ export class JettonPriceSkill implements SkillHandler {
     const diff7d = rates.diff_7d || {};
     const diff30d = rates.diff_30d || {};
 
-    // Fetch metadata for symbol/name
-    let symbol = address;
+    let symbol = resolved.symbol || address;
     let name = '';
     try {
       const { data: meta } = await firstValueFrom(
         this.http.get(`https://tonapi.io/v2/jettons/${address}`, { headers }),
       );
-      symbol = meta.metadata?.symbol || address;
+      symbol = meta.metadata?.symbol || symbol;
       name = meta.metadata?.name || '';
     } catch {
       // metadata fetch is best-effort
@@ -78,39 +74,5 @@ export class JettonPriceSkill implements SkillHandler {
       change7d: diff7d.USD || null,
       change30d: diff30d.USD || null,
     };
-  }
-
-  private isAddress(input: string): boolean {
-    return (
-      input.startsWith('EQ') ||
-      input.startsWith('UQ') ||
-      input.startsWith('0:') ||
-      input.startsWith('-1:')
-    );
-  }
-
-  private async resolveByName(
-    query: string,
-    headers: Record<string, string>,
-  ): Promise<string | null> {
-    try {
-      const { data } = await firstValueFrom(
-        this.http.get('https://tonapi.io/v2/accounts/search', {
-          headers,
-          params: { name: query },
-          timeout: 10000,
-        }),
-      );
-      // Find the first whitelisted jetton
-      const match = (data.addresses || []).find(
-        (a: any) =>
-          a.trust === 'whitelist' &&
-          (a.name?.toLowerCase().includes('jetton') ||
-            a.name?.toLowerCase().includes(query.toLowerCase())),
-      );
-      return match?.address || null;
-    } catch {
-      return null;
-    }
   }
 }

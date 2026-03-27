@@ -2,12 +2,13 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { resolveJetton } from '../../resolve-jetton.js';
 
 @Skill({
   name: 'get_jetton_analytics',
   description:
-    'Get market analytics for a jetton — price, volume, market cap, holder trends. Use jetton contract address.',
-  example: { jetton_address: 'EQ...' },
+    'Get market analytics for a jetton by name, symbol ($DOGS), or contract address — price, volume, market cap, holder trends',
+  example: { jetton_address: 'DOGS or EQ...' },
 })
 export class JettonMarketAnalyticsSkill implements SkillHandler {
   private apiKey: string;
@@ -20,10 +21,14 @@ export class JettonMarketAnalyticsSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const address: string = input.jetton_address;
-    if (!address) return { error: 'Missing jetton_address' };
+    const raw: string = input.jetton_address || '';
+    if (!raw) return { error: 'Missing jetton_address' };
 
     const headers = { Authorization: `Bearer ${this.apiKey}` };
+
+    const resolved = await resolveJetton(this.http, raw, this.apiKey);
+    if (!resolved) return { error: `Token "${raw}" not found` };
+    const address = resolved.address;
 
     const [jettonRes, ratesRes] = await Promise.allSettled([
       firstValueFrom(

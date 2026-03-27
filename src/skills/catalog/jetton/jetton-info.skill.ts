@@ -2,12 +2,13 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { Skill, SkillHandler } from '../../skill.decorator.js';
+import { resolveJetton } from '../../resolve-jetton.js';
 
 @Skill({
   name: 'get_jetton_info',
   description:
-    'look up jetton (token) metadata: name, symbol, decimals, total supply, holder count, verification status by contract address',
-  example: { jetton_address: 'EQ...' },
+    'look up jetton (token) metadata by name, symbol ($DOGS), or contract address — returns name, symbol, decimals, total supply, holder count, verification status',
+  example: { jetton_address: 'DOGS or EQ...' },
 })
 export class JettonInfoSkill implements SkillHandler {
   private apiKey: string;
@@ -20,8 +21,12 @@ export class JettonInfoSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const address: string = input.jetton_address;
+    const raw: string = input.jetton_address || '';
     const headers = { Authorization: `Bearer ${this.apiKey}` };
+
+    const resolved = await resolveJetton(this.http, raw, this.apiKey);
+    if (!resolved) return { error: `Token "${raw}" not found` };
+    const address = resolved.address;
 
     const { data } = await firstValueFrom(
       this.http.get(`https://tonapi.io/v2/jettons/${address}`, { headers }),
