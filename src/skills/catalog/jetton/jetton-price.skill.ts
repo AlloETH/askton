@@ -6,8 +6,8 @@ import { Skill, SkillHandler } from '../../skill.decorator.js';
 @Skill({
   name: 'get_jetton_price',
   description:
-    'get current price of a jetton (token) in USD and TON with 24h/7d/30d price changes',
-  example: { jetton_address: 'EQ...' },
+    'get current price of a jetton (token) by name, symbol ($DOGS), or contract address — returns USD/TON price with 24h/7d/30d changes',
+  example: { jetton_address: 'DOGS or EQ...' },
 })
 export class JettonPriceSkill implements SkillHandler {
   private apiKey: string;
@@ -20,8 +20,15 @@ export class JettonPriceSkill implements SkillHandler {
   }
 
   async execute(input: any): Promise<any> {
-    const address: string = input.jetton_address;
+    let address: string = (input.jetton_address || '').replace(/^\$/, '').trim();
     const headers = { Authorization: `Bearer ${this.apiKey}` };
+
+    // If not a valid address, search for the token by name/symbol
+    if (!this.isAddress(address)) {
+      const resolved = await this.resolveByName(address, headers);
+      if (!resolved) return { error: `Token "${address}" not found` };
+      address = resolved;
+    }
 
     const { data } = await firstValueFrom(
       this.http.get(
@@ -71,5 +78,39 @@ export class JettonPriceSkill implements SkillHandler {
       change7d: diff7d.USD || null,
       change30d: diff30d.USD || null,
     };
+  }
+
+  private isAddress(input: string): boolean {
+    return (
+      input.startsWith('EQ') ||
+      input.startsWith('UQ') ||
+      input.startsWith('0:') ||
+      input.startsWith('-1:')
+    );
+  }
+
+  private async resolveByName(
+    query: string,
+    headers: Record<string, string>,
+  ): Promise<string | null> {
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get('https://tonapi.io/v2/accounts/search', {
+          headers,
+          params: { name: query },
+          timeout: 10000,
+        }),
+      );
+      // Find the first whitelisted jetton
+      const match = (data.addresses || []).find(
+        (a: any) =>
+          a.trust === 'whitelist' &&
+          (a.name?.toLowerCase().includes('jetton') ||
+            a.name?.toLowerCase().includes(query.toLowerCase())),
+      );
+      return match?.address || null;
+    } catch {
+      return null;
+    }
   }
 }
