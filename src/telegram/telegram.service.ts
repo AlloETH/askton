@@ -33,7 +33,7 @@ export class TelegramService {
     const query = ctx.inlineQuery?.query?.trim();
 
     const chatType = ctx.inlineQuery?.chat_type;
-    if (!query || chatType === 'group' || chatType === 'supergroup') {
+    if (!query || chatType !== 'private') {
       await ctx.answerInlineQuery([], { cache_time: 0 });
       return;
     }
